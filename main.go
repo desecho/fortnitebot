@@ -497,8 +497,8 @@ func helpText(provider statsProvider) string {
 		"",
 		"Commands:",
 		"/players",
-		"/stats",
-		"/seasonstats",
+		"/stats [player]",
+		"/seasonstats [player]",
 		"/compare <player1> <player2>",
 		"/seasoncompare <player1> <player2>",
 	}
@@ -520,11 +520,25 @@ func statsText(provider statsProvider, args []string, season bool) string {
 	if provider.Count() == 0 {
 		return "No players are configured."
 	}
-	if len(args) != 0 {
+	if len(args) > 1 {
 		if season {
-			return "Usage: /seasonstats"
+			return "Usage: /seasonstats [player]"
 		}
-		return "Usage: /stats"
+		return "Usage: /stats [player]"
+	}
+
+	if len(args) == 1 {
+		entry, ok := provider.Lookup(args[0])
+		if !ok {
+			return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[0])
+		}
+
+		player, err := fetchStats(provider, entry, season)
+		if err != nil {
+			return fmt.Sprintf("Failed to fetch stats for %s: %v", entry.Name, err)
+		}
+
+		return formatStats(player)
 	}
 
 	results := fetchStatsBatch(provider, provider.Entries(), season)

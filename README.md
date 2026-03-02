@@ -18,8 +18,8 @@ The included `data.json` file is only a sample response payload reference. The b
 ## Commands
 
 - `/players`
-- `/stats`
-- `/seasonstats`
+- `/stats [player]`
+- `/seasonstats [player]`
 - `/compare <player1> <player2>`
 - `/seasoncompare <player1> <player2>`
 
@@ -80,8 +80,8 @@ To add a friend, add another object with their player name and account ID.
 
 - The bot uses Telegram long polling over the official Bot API.
 - The bot sends the `Authorization` header using `FORTNITE_API_TOKEN` when it calls the Fortnite API.
-- `/stats` fetches and lists `stats.all.overall` for every player in `players.json`.
-- `/seasonstats` fetches and lists `stats.all.overall` for every player in `players.json` using `?timeWindow=season`.
+- `/stats` fetches and lists `stats.all.overall` for every player in `players.json`, or only one player when called as `/stats <player>`.
+- `/seasonstats` fetches and lists `stats.all.overall` for every player in `players.json` using `?timeWindow=season`, or only one player when called as `/seasonstats <player>`.
 - `/seasoncompare` compares two players using `stats.all.overall` from `?timeWindow=season`.
 - Player stat requests are fetched in parallel to reduce response time.
 - Successful stat responses are cached in memory for 1 hour.
