@@ -20,6 +20,7 @@ const (
 	defaultPlayersFile = "players.json"
 	defaultPollTimeout = 30
 	fortniteAPIBaseURL = "https://fortnite-api.com/v2/stats/br/v2"
+	statsCacheTTL      = 1 * time.Hour
 )
 
 type appConfig struct {
@@ -45,6 +46,11 @@ type fetchResult struct {
 	err      error
 }
 
+type cachedSnapshot struct {
+	snapshot  playerSnapshot
+	expiresAt time.Time
+}
+
 type statsProvider interface {
 	Names() []string
 	Entries() []playerCatalogEntry
@@ -59,6 +65,8 @@ type fortniteAPIStatsProvider struct {
 	players map[string]playerCatalogEntry
 	token   string
 	client  *http.Client
+	cache   map[string]cachedSnapshot
+	cacheMu sync.RWMutex
 }
 
 type fortniteStatsResponse struct {
@@ -193,6 +201,7 @@ func newFortniteAPIStatsProvider(playersFile, apiToken string) (*fortniteAPIStat
 		client: &http.Client{
 			Timeout: 15 * time.Second,
 		},
+		cache: make(map[string]cachedSnapshot, len(entries)*2),
 	}
 
 	for _, entry := range entries {
@@ -259,6 +268,11 @@ func (p *fortniteAPIStatsProvider) FetchSeason(entry playerCatalogEntry) (player
 }
 
 func (p *fortniteAPIStatsProvider) fetch(entry playerCatalogEntry, timeWindow string) (playerSnapshot, error) {
+	cacheKey := p.cacheKey(entry, timeWindow)
+	if snapshot, ok := p.cachedSnapshot(cacheKey); ok {
+		return snapshot, nil
+	}
+
 	requestURL := fortniteAPIBaseURL + "/" + url.PathEscape(entry.AccountID)
 	if strings.TrimSpace(timeWindow) != "" {
 		values := url.Values{}
@@ -290,10 +304,49 @@ func (p *fortniteAPIStatsProvider) fetch(entry playerCatalogEntry, timeWindow st
 		return playerSnapshot{}, fmt.Errorf("fortnite api payload status %d for %s", payload.Status, entry.Name)
 	}
 
-	return playerSnapshot{
+	snapshot := playerSnapshot{
 		entry: entry,
 		stats: payload.Data.Stats.All.Overall,
-	}, nil
+	}
+	p.storeCachedSnapshot(cacheKey, snapshot)
+
+	return snapshot, nil
+}
+
+func (p *fortniteAPIStatsProvider) cacheKey(entry playerCatalogEntry, timeWindow string) string {
+	return entry.AccountID + "|" + strings.TrimSpace(timeWindow)
+}
+
+func (p *fortniteAPIStatsProvider) cachedSnapshot(cacheKey string) (playerSnapshot, bool) {
+	now := time.Now()
+
+	p.cacheMu.RLock()
+	cached, ok := p.cache[cacheKey]
+	p.cacheMu.RUnlock()
+	if !ok {
+		return playerSnapshot{}, false
+	}
+	if now.Before(cached.expiresAt) {
+		return cached.snapshot, true
+	}
+
+	p.cacheMu.Lock()
+	cached, ok = p.cache[cacheKey]
+	if ok && !now.Before(cached.expiresAt) {
+		delete(p.cache, cacheKey)
+	}
+	p.cacheMu.Unlock()
+
+	return playerSnapshot{}, false
+}
+
+func (p *fortniteAPIStatsProvider) storeCachedSnapshot(cacheKey string, snapshot playerSnapshot) {
+	p.cacheMu.Lock()
+	p.cache[cacheKey] = cachedSnapshot{
+		snapshot:  snapshot,
+		expiresAt: time.Now().Add(statsCacheTTL),
+	}
+	p.cacheMu.Unlock()
 }
 
 func newTelegramClient(token string) *telegramClient {
