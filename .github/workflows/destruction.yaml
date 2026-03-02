@@ -1,0 +1,32 @@
+---
+name: Destruction
+on: workflow_dispatch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+jobs:
+  destruction:
+    name: Destruction
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3.0.2
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3.0
+
+      - name: Configure kubectl
+        run: |
+          mkdir ~/.kube
+          echo "$KUBECONFIG" > ~/.kube/config
+        env:
+          KUBECONFIG: ${{ secrets.KUBECONFIG }} # Done as a variable because it doesn't work in place.
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2.5.1
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+          version: "1.135.0"
+
+      - name: Destroy
+        run: |
+          kubectl delete -f deployment/deployment.yaml --ignore-not-found

@@ -1,0 +1,24 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fortnitebot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fortnitebot
+  template:
+    metadata:
+      labels:
+        app: fortnitebot
+    spec:
+      terminationGracePeriodSeconds: 30
+      restartPolicy: Always
+      containers:
+        - name: fortnitebot
+          image: ghcr.io/desecho/fortnitebot:latest
+          imagePullPolicy: Always
+          envFrom:
+            - secretRef:
+                name: fortnitebot
