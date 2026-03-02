@@ -499,8 +499,8 @@ func helpText(provider statsProvider) string {
 		"/players",
 		"/stats [player]",
 		"/seasonstats [player]",
-		"/compare <player1> <player2>",
-		"/seasoncompare <player1> <player2>",
+		"/compare <player1> <player2> [player3 ...]",
+		"/seasoncompare <player1> <player2> [player3 ...]",
 	}
 
 	lines = append(lines, "", "Use /players to see the configured player names.")
@@ -595,49 +595,55 @@ func compareText(provider statsProvider, args []string, season bool) string {
 		}
 		return "Add at least two players to use /compare."
 	}
-	if len(args) != 2 {
+	if len(args) < 2 {
 		if season {
-			return "Usage: /seasoncompare <player1> <player2>"
+			return "Usage: /seasoncompare <player1> <player2> [player3 ...]"
 		}
-		return "Usage: /compare <player1> <player2>"
+		return "Usage: /compare <player1> <player2> [player3 ...]"
 	}
 
-	leftPlayer, ok := provider.Lookup(args[0])
-	if !ok {
-		return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[0])
+	seen := make(map[string]struct{}, len(args))
+	players := make([]playerCatalogEntry, 0, len(args))
+	for _, rawName := range args {
+		nameKey := strings.ToLower(strings.TrimSpace(rawName))
+		if _, exists := seen[nameKey]; exists {
+			return "Each player can only be listed once in a compare command."
+		}
+
+		player, ok := provider.Lookup(rawName)
+		if !ok {
+			return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", rawName)
+		}
+
+		seen[nameKey] = struct{}{}
+		players = append(players, player)
 	}
 
-	rightPlayer, ok := provider.Lookup(args[1])
-	if !ok {
-		return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[1])
+	results := fetchStatsBatch(provider, players, season)
+	for i, result := range results {
+		if result.err != nil {
+			return fmt.Sprintf("Failed to fetch compare stats for %s: %v", players[i].Name, result.err)
+		}
 	}
 
-	results := fetchStatsBatch(provider, []playerCatalogEntry{leftPlayer, rightPlayer}, season)
-	if results[0].err != nil {
-		return fmt.Sprintf("Failed to fetch stats for %s: %v", leftPlayer.Name, results[0].err)
-	}
-	if results[1].err != nil {
-		return fmt.Sprintf("Failed to fetch stats for %s: %v", rightPlayer.Name, results[1].err)
+	snapshots := make([]playerSnapshot, 0, len(results))
+	lines := make([]string, 0, len(results)+9)
+	lines = append(lines, compareTitle(season))
+	for _, result := range results {
+		snapshots = append(snapshots, result.snapshot)
+		lines = append(lines, fmt.Sprintf("%s: %s", playerLabel(result.snapshot), formatInlineStats(result.snapshot.stats)))
 	}
 
-	leftStats := results[0].snapshot.stats
-	rightStats := results[1].snapshot.stats
-	leftName := playerLabel(results[0].snapshot)
-	rightName := playerLabel(results[1].snapshot)
-
-	lines := []string{
-		compareTitle(season),
-		fmt.Sprintf("%s: %s", leftName, formatInlineStats(leftStats)),
-		fmt.Sprintf("%s: %s", rightName, formatInlineStats(rightStats)),
-		fmt.Sprintf("Wins leader: %s", winnerLabel(leftName, rightName, float64(leftStats.Wins), float64(rightStats.Wins), false)),
-		fmt.Sprintf("Kills leader: %s", winnerLabel(leftName, rightName, float64(leftStats.Kills), float64(rightStats.Kills), false)),
-		fmt.Sprintf("Kills/match leader: %s", winnerLabel(leftName, rightName, leftStats.KillsPerMatch, rightStats.KillsPerMatch, false)),
-		fmt.Sprintf("Lower deaths: %s", winnerLabel(leftName, rightName, float64(leftStats.Deaths), float64(rightStats.Deaths), true)),
-		fmt.Sprintf("KD leader: %s", winnerLabel(leftName, rightName, leftStats.KD, rightStats.KD, false)),
-		fmt.Sprintf("Matches leader: %s", winnerLabel(leftName, rightName, float64(leftStats.Matches), float64(rightStats.Matches), false)),
-		fmt.Sprintf("Win rate leader: %s", winnerLabel(leftName, rightName, leftStats.WinRate, rightStats.WinRate, false)),
-		fmt.Sprintf("Hours played leader: %s", winnerLabel(leftName, rightName, float64(leftStats.MinutesPlayed), float64(rightStats.MinutesPlayed), false)),
-	}
+	lines = append(lines,
+		fmt.Sprintf("Wins leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Wins) }, false)),
+		fmt.Sprintf("Kills leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Kills) }, false)),
+		fmt.Sprintf("Kills/match leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.KillsPerMatch }, false)),
+		fmt.Sprintf("Lower deaths: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Deaths) }, true)),
+		fmt.Sprintf("KD leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.KD }, false)),
+		fmt.Sprintf("Matches leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Matches) }, false)),
+		fmt.Sprintf("Win rate leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.WinRate }, false)),
+		fmt.Sprintf("Hours played leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.MinutesPlayed) }, false)),
+	)
 
 	return strings.Join(lines, "\n")
 }
@@ -688,23 +694,33 @@ func playerLabel(player playerSnapshot) string {
 	return player.entry.Name
 }
 
-func winnerLabel(leftName, rightName string, leftValue, rightValue float64, lowerIsBetter bool) string {
-	switch {
-	case leftValue == rightValue:
-		pair := []string{leftName, rightName}
-		slices.Sort(pair)
-		return "Tie (" + strings.Join(pair, " / ") + ")"
-	case lowerIsBetter && leftValue < rightValue:
-		return leftName
-	case lowerIsBetter && rightValue < leftValue:
-		return rightName
-	case leftValue > rightValue:
-		return leftName
-	case rightValue > leftValue:
-		return rightName
-	default:
-		pair := []string{leftName, rightName}
-		slices.Sort(pair)
-		return "Tie (" + strings.Join(pair, " / ") + ")"
+func leaderLabel(players []playerSnapshot, valueFn func(statLine) float64, lowerIsBetter bool) string {
+	if len(players) == 0 {
+		return ""
 	}
+
+	bestValue := valueFn(players[0].stats)
+	winners := []string{playerLabel(players[0])}
+
+	for _, player := range players[1:] {
+		value := valueFn(player.stats)
+
+		switch {
+		case value == bestValue:
+			winners = append(winners, playerLabel(player))
+		case lowerIsBetter && value < bestValue:
+			bestValue = value
+			winners = []string{playerLabel(player)}
+		case !lowerIsBetter && value > bestValue:
+			bestValue = value
+			winners = []string{playerLabel(player)}
+		}
+	}
+
+	if len(winners) == 1 {
+		return winners[0]
+	}
+
+	slices.Sort(winners)
+	return "Tie (" + strings.Join(winners, " / ") + ")"
 }

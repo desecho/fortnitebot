@@ -20,8 +20,8 @@ The included `data.json` file is only a sample response payload reference. The b
 - `/players`
 - `/stats [player]`
 - `/seasonstats [player]`
-- `/compare <player1> <player2>`
-- `/seasoncompare <player1> <player2>`
+- `/compare <player1> <player2> [player3 ...]`
+- `/seasoncompare <player1> <player2> [player3 ...]`
 
 ## Setup
 
@@ -71,7 +71,7 @@ If you want to use a different player list, mount your own `players.json` file t
 ]
 ```
 
-- `name`: the player name used in bot output and for `/compare`.
+- `name`: the player name used in bot output and compare commands.
 - `accountId`: the Epic account ID used to call `https://fortnite-api.com/v2/stats/br/v2/<account_id>`.
 
 To add a friend, add another object with their player name and account ID.
@@ -82,7 +82,8 @@ To add a friend, add another object with their player name and account ID.
 - The bot sends the `Authorization` header using `FORTNITE_API_TOKEN` when it calls the Fortnite API.
 - `/stats` fetches and lists `stats.all.overall` for every player in `players.json`, or only one player when called as `/stats <player>`.
 - `/seasonstats` fetches and lists `stats.all.overall` for every player in `players.json` using `?timeWindow=season`, or only one player when called as `/seasonstats <player>`.
-- `/seasoncompare` compares two players using `stats.all.overall` from `?timeWindow=season`.
+- `/compare` compares two or more players using `stats.all.overall`.
+- `/seasoncompare` compares two or more players using `stats.all.overall` from `?timeWindow=season`.
 - Player stat requests are fetched in parallel to reduce response time.
 - Successful stat responses are cached in memory for 1 hour.
 - The bot ignores other Fortnite fields in the response and only reads `stats.all.overall`.
