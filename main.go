@@ -44,6 +44,7 @@ type statsProvider interface {
 	Count() int
 	Lookup(name string) (playerCatalogEntry, bool)
 	Fetch(entry playerCatalogEntry) (playerSnapshot, error)
+	FetchSeason(entry playerCatalogEntry) (playerSnapshot, error)
 }
 
 type fortniteAPIStatsProvider struct {
@@ -243,7 +244,20 @@ func (p *fortniteAPIStatsProvider) Lookup(name string) (playerCatalogEntry, bool
 }
 
 func (p *fortniteAPIStatsProvider) Fetch(entry playerCatalogEntry) (playerSnapshot, error) {
+	return p.fetch(entry, "")
+}
+
+func (p *fortniteAPIStatsProvider) FetchSeason(entry playerCatalogEntry) (playerSnapshot, error) {
+	return p.fetch(entry, "season")
+}
+
+func (p *fortniteAPIStatsProvider) fetch(entry playerCatalogEntry, timeWindow string) (playerSnapshot, error) {
 	requestURL := fortniteAPIBaseURL + "/" + url.PathEscape(entry.AccountID)
+	if strings.TrimSpace(timeWindow) != "" {
+		values := url.Values{}
+		values.Set("timeWindow", timeWindow)
+		requestURL += "?" + values.Encode()
+	}
 
 	req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 	if err != nil {
@@ -397,9 +411,13 @@ func handleMessage(provider statsProvider, text string) string {
 	case "/players":
 		return playersText(provider)
 	case "/stats":
-		return statsText(provider, args)
+		return statsText(provider, args, false)
+	case "/seasonstats":
+		return statsText(provider, args, true)
 	case "/compare":
-		return compareText(provider, args)
+		return compareText(provider, args, false)
+	case "/seasoncompare":
+		return compareText(provider, args, true)
 	default:
 		return "Unknown command. Use /help to see the available commands."
 	}
@@ -420,7 +438,9 @@ func helpText(provider statsProvider) string {
 		"Commands:",
 		"/players",
 		"/stats",
+		"/seasonstats",
 		"/compare <player1> <player2>",
+		"/seasoncompare <player1> <player2>",
 	}
 
 	lines = append(lines, "", "Use /players to see the configured player names.")
@@ -436,17 +456,20 @@ func playersText(provider statsProvider) string {
 	return "Configured players:\n" + strings.Join(names, "\n")
 }
 
-func statsText(provider statsProvider, args []string) string {
+func statsText(provider statsProvider, args []string, season bool) string {
 	if provider.Count() == 0 {
 		return "No players are configured."
 	}
 	if len(args) != 0 {
+		if season {
+			return "Usage: /seasonstats"
+		}
 		return "Usage: /stats"
 	}
 
 	snapshots := make([]string, 0, provider.Count())
 	for _, entry := range provider.Entries() {
-		player, err := provider.Fetch(entry)
+		player, err := fetchStats(provider, entry, season)
 		if err != nil {
 			snapshots = append(snapshots, fmt.Sprintf("%s\nFailed to fetch stats: %v", entry.Name, err))
 			continue
@@ -457,11 +480,24 @@ func statsText(provider statsProvider, args []string) string {
 	return strings.Join(snapshots, "\n\n")
 }
 
-func compareText(provider statsProvider, args []string) string {
+func fetchStats(provider statsProvider, entry playerCatalogEntry, season bool) (playerSnapshot, error) {
+	if season {
+		return provider.FetchSeason(entry)
+	}
+	return provider.Fetch(entry)
+}
+
+func compareText(provider statsProvider, args []string, season bool) string {
 	if provider.Count() < 2 {
+		if season {
+			return "Add at least two players to use /seasoncompare."
+		}
 		return "Add at least two players to use /compare."
 	}
 	if len(args) != 2 {
+		if season {
+			return "Usage: /seasoncompare <player1> <player2>"
+		}
 		return "Usage: /compare <player1> <player2>"
 	}
 
@@ -475,11 +511,11 @@ func compareText(provider statsProvider, args []string) string {
 		return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[1])
 	}
 
-	leftSnapshot, err := provider.Fetch(leftPlayer)
+	leftSnapshot, err := fetchStats(provider, leftPlayer, season)
 	if err != nil {
 		return fmt.Sprintf("Failed to fetch stats for %s: %v", leftPlayer.Name, err)
 	}
-	rightSnapshot, err := provider.Fetch(rightPlayer)
+	rightSnapshot, err := fetchStats(provider, rightPlayer, season)
 	if err != nil {
 		return fmt.Sprintf("Failed to fetch stats for %s: %v", rightPlayer.Name, err)
 	}
@@ -490,7 +526,7 @@ func compareText(provider statsProvider, args []string) string {
 	rightName := playerLabel(rightSnapshot)
 
 	lines := []string{
-		"Compare (overall)",
+		compareTitle(season),
 		fmt.Sprintf("%s: %s", leftName, formatInlineStats(leftStats)),
 		fmt.Sprintf("%s: %s", rightName, formatInlineStats(rightStats)),
 		fmt.Sprintf("Wins leader: %s", winnerLabel(leftName, rightName, float64(leftStats.Wins), float64(rightStats.Wins), false)),
@@ -504,6 +540,13 @@ func compareText(provider statsProvider, args []string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func compareTitle(season bool) string {
+	if season {
+		return "Compare (season)"
+	}
+	return "Compare (overall)"
 }
 
 func formatStats(player playerSnapshot) string {

@@ -19,7 +19,9 @@ The included `data.json` file is only a sample response payload reference. The b
 
 - `/players`
 - `/stats`
+- `/seasonstats`
 - `/compare <player1> <player2>`
+- `/seasoncompare <player1> <player2>`
 
 ## Setup
 
@@ -79,4 +81,6 @@ To add a friend, add another object with their player name and account ID.
 - The bot uses Telegram long polling over the official Bot API.
 - The bot sends the `Authorization` header using `FORTNITE_API_TOKEN` when it calls the Fortnite API.
 - `/stats` fetches and lists `stats.all.overall` for every player in `players.json`.
+- `/seasonstats` fetches and lists `stats.all.overall` for every player in `players.json` using `?timeWindow=season`.
+- `/seasoncompare` compares two players using `stats.all.overall` from `?timeWindow=season`.
 - The bot ignores other Fortnite fields in the response and only reads `stats.all.overall`.
