@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -36,6 +37,12 @@ type playerCatalogEntry struct {
 type playerSnapshot struct {
 	entry playerCatalogEntry
 	stats statLine
+}
+
+type fetchResult struct {
+	entry    playerCatalogEntry
+	snapshot playerSnapshot
+	err      error
 }
 
 type statsProvider interface {
@@ -467,14 +474,15 @@ func statsText(provider statsProvider, args []string, season bool) string {
 		return "Usage: /stats"
 	}
 
-	snapshots := make([]string, 0, provider.Count())
-	for _, entry := range provider.Entries() {
-		player, err := fetchStats(provider, entry, season)
-		if err != nil {
-			snapshots = append(snapshots, fmt.Sprintf("%s\nFailed to fetch stats: %v", entry.Name, err))
+	results := fetchStatsBatch(provider, provider.Entries(), season)
+
+	snapshots := make([]string, 0, len(results))
+	for _, result := range results {
+		if result.err != nil {
+			snapshots = append(snapshots, fmt.Sprintf("%s\nFailed to fetch stats: %v", result.entry.Name, result.err))
 			continue
 		}
-		snapshots = append(snapshots, formatStats(player))
+		snapshots = append(snapshots, formatStats(result.snapshot))
 	}
 
 	return strings.Join(snapshots, "\n\n")
@@ -485,6 +493,32 @@ func fetchStats(provider statsProvider, entry playerCatalogEntry, season bool) (
 		return provider.FetchSeason(entry)
 	}
 	return provider.Fetch(entry)
+}
+
+func fetchStatsBatch(provider statsProvider, entries []playerCatalogEntry, season bool) []fetchResult {
+	results := make([]fetchResult, len(entries))
+
+	var wg sync.WaitGroup
+	wg.Add(len(entries))
+
+	for i, entry := range entries {
+		i := i
+		entry := entry
+
+		go func() {
+			defer wg.Done()
+
+			snapshot, err := fetchStats(provider, entry, season)
+			results[i] = fetchResult{
+				entry:    entry,
+				snapshot: snapshot,
+				err:      err,
+			}
+		}()
+	}
+
+	wg.Wait()
+	return results
 }
 
 func compareText(provider statsProvider, args []string, season bool) string {
@@ -511,19 +545,18 @@ func compareText(provider statsProvider, args []string, season bool) string {
 		return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[1])
 	}
 
-	leftSnapshot, err := fetchStats(provider, leftPlayer, season)
-	if err != nil {
-		return fmt.Sprintf("Failed to fetch stats for %s: %v", leftPlayer.Name, err)
+	results := fetchStatsBatch(provider, []playerCatalogEntry{leftPlayer, rightPlayer}, season)
+	if results[0].err != nil {
+		return fmt.Sprintf("Failed to fetch stats for %s: %v", leftPlayer.Name, results[0].err)
 	}
-	rightSnapshot, err := fetchStats(provider, rightPlayer, season)
-	if err != nil {
-		return fmt.Sprintf("Failed to fetch stats for %s: %v", rightPlayer.Name, err)
+	if results[1].err != nil {
+		return fmt.Sprintf("Failed to fetch stats for %s: %v", rightPlayer.Name, results[1].err)
 	}
 
-	leftStats := leftSnapshot.stats
-	rightStats := rightSnapshot.stats
-	leftName := playerLabel(leftSnapshot)
-	rightName := playerLabel(rightSnapshot)
+	leftStats := results[0].snapshot.stats
+	rightStats := results[1].snapshot.stats
+	leftName := playerLabel(results[0].snapshot)
+	rightName := playerLabel(results[1].snapshot)
 
 	lines := []string{
 		compareTitle(season),

@@ -83,4 +83,5 @@ To add a friend, add another object with their player name and account ID.
 - `/stats` fetches and lists `stats.all.overall` for every player in `players.json`.
 - `/seasonstats` fetches and lists `stats.all.overall` for every player in `players.json` using `?timeWindow=season`.
 - `/seasoncompare` compares two players using `stats.all.overall` from `?timeWindow=season`.
+- Player stat requests are fetched in parallel to reduce response time.
 - The bot ignores other Fortnite fields in the response and only reads `stats.all.overall`.
