@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -335,13 +334,24 @@ func TestFortniteAPISeasonProviderDaysLeftErrors(t *testing.T) {
 }
 
 func TestEpicStatusProviderSummary(t *testing.T) {
-	body, err := os.ReadFile("data.json")
-	if err != nil {
-		t.Fatalf("ReadFile(data.json) error = %v", err)
-	}
+	body := `{
+		"status": {"description": "All Systems Operational"},
+		"components": [
+			{"id": "fn", "name": "Fortnite", "status": "operational", "group": true, "group_id": "", "components": ["fn-1","fn-2","fn-3","fn-4","fn-5","fn-6","fn-7","fn-8","fn-9"]},
+			{"id": "fn-1", "name": "Website", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-2", "name": "Game Services", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-3", "name": "Login", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-4", "name": "Parties, Friends, and Messaging", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-5", "name": "Voice Chat", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-6", "name": "Matchmaking", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-7", "name": "Stats and Leaderboards", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-8", "name": "Item Shop", "status": "operational", "group": false, "group_id": "fn", "components": []},
+			{"id": "fn-9", "name": "Fortnite Crew", "status": "operational", "group": false, "group_id": "fn", "components": []}
+		]
+	}`
 
 	client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-		return newTestResponse(r, http.StatusOK, string(body)), nil
+		return newTestResponse(r, http.StatusOK, body), nil
 	})
 
 	provider := &epicStatusProvider{
