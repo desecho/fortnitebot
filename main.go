@@ -627,11 +627,10 @@ func compareText(provider statsProvider, args []string, season bool) string {
 	}
 
 	snapshots := make([]playerSnapshot, 0, len(results))
-	lines := make([]string, 0, len(results)+9)
+	lines := make([]string, 0, 9)
 	lines = append(lines, compareTitle(season))
 	for _, result := range results {
 		snapshots = append(snapshots, result.snapshot)
-		lines = append(lines, fmt.Sprintf("%s: %s", playerLabel(result.snapshot), formatInlineStats(result.snapshot.stats)))
 	}
 
 	lines = append(lines,
@@ -670,20 +669,6 @@ func formatStats(player playerSnapshot) string {
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-func formatInlineStats(line statLine) string {
-	return fmt.Sprintf(
-		"%d wins, %d kills, %.2f kills/match, %d deaths, %.2f KD, %d matches, %.2f%% win rate, %.2f hours",
-		line.Wins,
-		line.Kills,
-		line.KillsPerMatch,
-		line.Deaths,
-		line.KD,
-		line.Matches,
-		line.WinRate,
-		hoursPlayed(line.MinutesPlayed),
-	)
 }
 
 func hoursPlayed(minutes int64) float64 {
