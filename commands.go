@@ -67,7 +67,6 @@ func helpText() string {
 		"/seasoncompare <player1> <player2> [player3 ...]",
 		"/session [player]",
 		"/sessions [player]",
-		"/snapshot",
 	}
 
 	lines = append(lines, "", "Use /players to see the configured player names.")
