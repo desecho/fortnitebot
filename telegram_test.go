@@ -1,198 +1,140 @@
 package main
 
 import (
-	"encoding/json"
-	"net/http"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func TestNewTelegramClient(t *testing.T) {
-	client := newTelegramClient("test-token")
-	want := "https://api.telegram.org/bottest-token"
-	if client.baseURL != want {
-		t.Fatalf("baseURL = %q, want %q", client.baseURL, want)
+type fakeBotClient struct {
+	batches   [][]tgbotapi.Update
+	batchIdx  int
+	sent      []sentMessage
+	sendCalls int
+	sendErrs  []error // consumed in order; nil or empty means success
+	done      chan struct{}
+	mu        sync.Mutex
+}
+
+type sentMessage struct {
+	chatID int64
+	text   string
+}
+
+func newFakeBotClient(batches ...[]tgbotapi.Update) *fakeBotClient {
+	return &fakeBotClient{
+		batches: batches,
+		done:    make(chan struct{}),
 	}
 }
 
-func TestTelegramGetUpdates(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		var receivedURL string
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			receivedURL = r.URL.String()
-			body := `{"ok":true,"result":[{"update_id":123,"message":{"message_id":1,"text":"/help","chat":{"id":456}}}]}`
-			return newTestResponse(r, http.StatusOK, body), nil
-		})
+func (f *fakeBotClient) getUpdates(offset int, timeoutSecs int) ([]tgbotapi.Update, error) {
+	f.mu.Lock()
+	idx := f.batchIdx
+	f.batchIdx++
+	f.mu.Unlock()
 
-		tc := &telegramClient{
-			baseURL:    "http://example.invalid/bot123",
-			httpClient: client,
+	if idx >= len(f.batches) {
+		if idx == len(f.batches) {
+			close(f.done)
 		}
-
-		updates, err := tc.getUpdates(10, 30)
-		if err != nil {
-			t.Fatalf("getUpdates() error = %v", err)
-		}
-		if len(updates) != 1 {
-			t.Fatalf("len(updates) = %d, want 1", len(updates))
-		}
-		if updates[0].UpdateID != 123 {
-			t.Fatalf("UpdateID = %d, want 123", updates[0].UpdateID)
-		}
-		if updates[0].Message.Text != "/help" {
-			t.Fatalf("Text = %q, want /help", updates[0].Message.Text)
-		}
-		if updates[0].Message.Chat.ID != 456 {
-			t.Fatalf("Chat.ID = %d, want 456", updates[0].Message.Chat.ID)
-		}
-		if !strings.Contains(receivedURL, "offset=10") {
-			t.Fatalf("URL = %q, want substring offset=10", receivedURL)
-		}
-		if !strings.Contains(receivedURL, "timeout=30") {
-			t.Fatalf("URL = %q, want substring timeout=30", receivedURL)
-		}
-	})
-
-	t.Run("empty result", func(t *testing.T) {
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			return newTestResponse(r, http.StatusOK, `{"ok":true,"result":[]}`), nil
-		})
-
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		updates, err := tc.getUpdates(0, 30)
-		if err != nil {
-			t.Fatalf("getUpdates() error = %v", err)
-		}
-		if len(updates) != 0 {
-			t.Fatalf("len(updates) = %d, want 0", len(updates))
-		}
-	})
-
-	t.Run("non-200 response", func(t *testing.T) {
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			return newTestResponse(r, http.StatusBadGateway, ""), nil
-		})
-
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		_, err := tc.getUpdates(0, 30)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-		if !strings.Contains(err.Error(), "telegram returned 502") {
-			t.Fatalf("error = %q, want substring 'telegram returned 502'", err.Error())
-		}
-	})
-
-	t.Run("invalid json", func(t *testing.T) {
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			return newTestResponse(r, http.StatusOK, `{invalid`), nil
-		})
-
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		_, err := tc.getUpdates(0, 30)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
-
-	t.Run("telegram error response", func(t *testing.T) {
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			return newTestResponse(r, http.StatusOK, `{"ok":false,"description":"Unauthorized"}`), nil
-		})
-
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		_, err := tc.getUpdates(0, 30)
-		if err == nil {
-			t.Fatal("expected error")
-		}
-		if !strings.Contains(err.Error(), "Unauthorized") {
-			t.Fatalf("error = %q, want substring 'Unauthorized'", err.Error())
-		}
-	})
+		time.Sleep(time.Hour) // block to prevent busy loop
+		return nil, fmt.Errorf("stopped")
+	}
+	return f.batches[idx], nil
 }
 
-func TestTelegramSendMessage(t *testing.T) {
-	t.Run("success", func(t *testing.T) {
-		var receivedBody telegramSendMessageRequest
-		var receivedContentType string
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			receivedContentType = r.Header.Get("Content-Type")
-			if err := json.NewDecoder(r.Body).Decode(&receivedBody); err != nil {
-				t.Fatalf("decode request body: %v", err)
-			}
-			return newTestResponse(r, http.StatusOK, `{"ok":true}`), nil
-		})
+func (f *fakeBotClient) sendMessage(chatID int64, text string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		err := tc.sendMessage(456, "Hello, world!")
+	f.sendCalls++
+	if len(f.sendErrs) > 0 {
+		err := f.sendErrs[0]
+		f.sendErrs = f.sendErrs[1:]
 		if err != nil {
-			t.Fatalf("sendMessage() error = %v", err)
+			return err
 		}
+	}
+	f.sent = append(f.sent, sentMessage{chatID: chatID, text: text})
+	return nil
+}
 
-		if receivedContentType != "application/json" {
-			t.Fatalf("Content-Type = %q, want application/json", receivedContentType)
-		}
-		if receivedBody.ChatID != "456" {
-			t.Fatalf("ChatID = %q, want 456", receivedBody.ChatID)
-		}
-		if receivedBody.Text != "Hello, world!" {
-			t.Fatalf("Text = %q, want Hello, world!", receivedBody.Text)
-		}
-	})
+func newMessageUpdate(updateID int, chatID int64, text string) tgbotapi.Update {
+	return tgbotapi.Update{
+		UpdateID: updateID,
+		Message: &tgbotapi.Message{
+			Text: text,
+			Chat: &tgbotapi.Chat{ID: chatID},
+		},
+	}
+}
 
-	t.Run("non-200 response", func(t *testing.T) {
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			return newTestResponse(r, http.StatusTooManyRequests, ""), nil
-		})
+func waitForDone(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for runBot to process all batches")
+	}
+}
 
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		err := tc.sendMessage(456, "Hello")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-		if !strings.Contains(err.Error(), "telegram returned 429") {
-			t.Fatalf("error = %q, want substring 'telegram returned 429'", err.Error())
-		}
-	})
+func TestRunBotForwardsMessages(t *testing.T) {
+	fake := newFakeBotClient(
+		[]tgbotapi.Update{newMessageUpdate(1, 100, "/help")},
+	)
+	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, 1)
+	waitForDone(t, fake.done)
 
-	t.Run("invalid json response", func(t *testing.T) {
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			return newTestResponse(r, http.StatusOK, `{invalid`), nil
-		})
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
 
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		err := tc.sendMessage(456, "Hello")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-	})
+	if len(fake.sent) != 1 {
+		t.Fatalf("sent %d messages, want 1", len(fake.sent))
+	}
+	if fake.sent[0].chatID != 100 {
+		t.Fatalf("chatID = %d, want 100", fake.sent[0].chatID)
+	}
+	if !strings.Contains(fake.sent[0].text, "/stats") {
+		t.Fatalf("response = %q, want help text containing /stats", fake.sent[0].text)
+	}
+}
 
-	t.Run("telegram error response", func(t *testing.T) {
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			return newTestResponse(r, http.StatusOK, `{"ok":false,"description":"Bad Request: chat not found"}`), nil
-		})
+func TestRunBotSkipsNilMessage(t *testing.T) {
+	fake := newFakeBotClient(
+		[]tgbotapi.Update{{UpdateID: 1, Message: nil}},
+	)
+	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, 1)
+	waitForDone(t, fake.done)
 
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		err := tc.sendMessage(456, "Hello")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-		if !strings.Contains(err.Error(), "Bad Request: chat not found") {
-			t.Fatalf("error = %q, want substring 'Bad Request: chat not found'", err.Error())
-		}
-	})
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
 
-	t.Run("uses POST method", func(t *testing.T) {
-		var receivedMethod string
-		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
-			receivedMethod = r.Method
-			return newTestResponse(r, http.StatusOK, `{"ok":true}`), nil
-		})
+	if len(fake.sent) != 0 {
+		t.Fatalf("sent %d messages, want 0", len(fake.sent))
+	}
+}
 
-		tc := &telegramClient{baseURL: "http://example.invalid/bot123", httpClient: client}
-		_ = tc.sendMessage(456, "Hello")
-		if receivedMethod != http.MethodPost {
-			t.Fatalf("method = %q, want POST", receivedMethod)
-		}
-	})
+func TestRunBotRetriesOnSendError(t *testing.T) {
+	fake := newFakeBotClient(
+		[]tgbotapi.Update{newMessageUpdate(1, 100, "/help")},
+	)
+	fake.sendErrs = []error{fmt.Errorf("network error")} // first call fails, retry succeeds
+
+	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, 1)
+	waitForDone(t, fake.done)
+
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+
+	if fake.sendCalls != 2 {
+		t.Fatalf("sendCalls = %d, want 2 (initial + retry)", fake.sendCalls)
+	}
+	if len(fake.sent) != 1 {
+		t.Fatalf("sent %d messages, want 1 (retry should succeed)", len(fake.sent))
+	}
 }

@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 const (
@@ -51,6 +53,11 @@ type seasonProvider interface {
 
 type statusProvider interface {
 	Summary() (fortniteStatusSummary, error)
+}
+
+type botClient interface {
+	getUpdates(offset int, timeoutSecs int) ([]tgbotapi.Update, error)
+	sendMessage(chatID int64, text string) error
 }
 
 type fortniteAPIStatsProvider struct {
@@ -127,38 +134,3 @@ type statLine struct {
 	MinutesPlayed int64   `json:"minutesPlayed"`
 }
 
-type telegramClient struct {
-	baseURL    string
-	httpClient *http.Client
-}
-
-type telegramUpdateEnvelope struct {
-	OK          bool             `json:"ok"`
-	Result      []telegramUpdate `json:"result"`
-	Description string           `json:"description"`
-}
-
-type telegramResultEnvelope struct {
-	OK          bool   `json:"ok"`
-	Description string `json:"description"`
-}
-
-type telegramUpdate struct {
-	UpdateID int64            `json:"update_id"`
-	Message  *telegramMessage `json:"message"`
-}
-
-type telegramMessage struct {
-	MessageID int64        `json:"message_id"`
-	Text      string       `json:"text"`
-	Chat      telegramChat `json:"chat"`
-}
-
-type telegramChat struct {
-	ID int64 `json:"id"`
-}
-
-type telegramSendMessageRequest struct {
-	ChatID string `json:"chat_id"`
-	Text   string `json:"text"`
-}

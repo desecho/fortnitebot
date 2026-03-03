@@ -1,87 +1,29 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"net/url"
-	"strconv"
-	"time"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func newTelegramClient(token string) *telegramClient {
-	return &telegramClient{
-		baseURL: "https://api.telegram.org/bot" + token,
-		httpClient: &http.Client{
-			Timeout: 90 * time.Second,
-		},
-	}
+type telegramBotClient struct {
+	api *tgbotapi.BotAPI
 }
 
-func (c *telegramClient) getUpdates(offset int64, timeoutSecs int) ([]telegramUpdate, error) {
-	query := url.Values{}
-	query.Set("offset", strconv.FormatInt(offset, 10))
-	query.Set("timeout", strconv.Itoa(timeoutSecs))
-
-	req, err := http.NewRequest(http.MethodGet, c.baseURL+"/getUpdates?"+query.Encode(), nil)
+func newTelegramBotClient(token string) (*telegramBotClient, error) {
+	api, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, err
 	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("telegram returned %s", resp.Status)
-	}
-
-	var payload telegramUpdateEnvelope
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	if !payload.OK {
-		return nil, fmt.Errorf("telegram error: %s", payload.Description)
-	}
-
-	return payload.Result, nil
+	return &telegramBotClient{api: api}, nil
 }
 
-func (c *telegramClient) sendMessage(chatID int64, text string) error {
-	body, err := json.Marshal(telegramSendMessageRequest{
-		ChatID: strconv.FormatInt(chatID, 10),
-		Text:   text,
-	})
-	if err != nil {
-		return err
-	}
+func (c *telegramBotClient) getUpdates(offset int, timeoutSecs int) ([]tgbotapi.Update, error) {
+	cfg := tgbotapi.NewUpdate(offset)
+	cfg.Timeout = timeoutSecs
+	return c.api.GetUpdates(cfg)
+}
 
-	req, err := http.NewRequest(http.MethodPost, c.baseURL+"/sendMessage", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram returned %s", resp.Status)
-	}
-
-	var payload telegramResultEnvelope
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return err
-	}
-	if !payload.OK {
-		return fmt.Errorf("telegram error: %s", payload.Description)
-	}
-
-	return nil
+func (c *telegramBotClient) sendMessage(chatID int64, text string) error {
+	msg := tgbotapi.NewMessage(chatID, text)
+	_, err := c.api.Send(msg)
+	return err
 }

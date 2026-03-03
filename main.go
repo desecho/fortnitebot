@@ -33,7 +33,10 @@ func main() {
 
 	seasonProvider := newFortniteAPISeasonProvider(cfg.fortniteAPI2Token)
 	statusSource := newEpicStatusProvider()
-	client := newTelegramClient(cfg.botToken)
+	client, err := newTelegramBotClient(cfg.botToken)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if err := runBot(client, provider, seasonProvider, statusSource, cfg.pollTimeoutSecs); err != nil {
 		log.Fatal(err)
 	}
@@ -78,8 +81,8 @@ func loadConfig() (appConfig, error) {
 	}, nil
 }
 
-func runBot(client *telegramClient, provider statsProvider, season seasonProvider, status statusProvider, pollTimeout int) error {
-	var offset int64
+func runBot(client botClient, provider statsProvider, season seasonProvider, status statusProvider, pollTimeout int) error {
+	var offset int
 
 	log.Printf("Bot is running with %d configured player(s).", provider.Count())
 
@@ -93,19 +96,20 @@ func runBot(client *telegramClient, provider statsProvider, season seasonProvide
 
 		for _, update := range updates {
 			offset = update.UpdateID + 1
-			if update.Message == nil {
+			msg := update.Message
+			if msg == nil {
 				continue
 			}
 
-			response := handleMessage(provider, season, status, update.Message.Text)
+			response := handleMessage(provider, season, status, msg.Text)
 			if strings.TrimSpace(response) == "" {
 				continue
 			}
 
-			if err := client.sendMessage(update.Message.Chat.ID, response); err != nil {
+			if err := client.sendMessage(msg.Chat.ID, response); err != nil {
 				log.Printf("send message failed: %v", err)
 				time.Sleep(1 * time.Second)
-				if retryErr := client.sendMessage(update.Message.Chat.ID, response); retryErr != nil {
+				if retryErr := client.sendMessage(msg.Chat.ID, response); retryErr != nil {
 					log.Printf("send message retry failed: %v", retryErr)
 				}
 			}
