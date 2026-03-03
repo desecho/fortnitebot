@@ -475,7 +475,7 @@ func collectSnapshotsReport(provider statsProvider, store snapshotStore) string 
 	lines := []string{fmt.Sprintf("Collecting snapshots for %s", today)}
 
 	for _, entry := range provider.Entries() {
-		snapshot, err := provider.Fetch(entry)
+		snapshot, err := provider.FetchFresh(entry)
 		if err != nil {
 			lines = append(lines, fmt.Sprintf("%s: failed to fetch (%v)", entry.Name, err))
 			continue

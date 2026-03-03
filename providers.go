@@ -114,17 +114,23 @@ func (p *fortniteAPIStatsProvider) Lookup(name string) (playerCatalogEntry, bool
 }
 
 func (p *fortniteAPIStatsProvider) Fetch(entry playerCatalogEntry) (playerSnapshot, error) {
-	return p.fetch(entry, "")
+	return p.fetch(entry, "", true)
+}
+
+func (p *fortniteAPIStatsProvider) FetchFresh(entry playerCatalogEntry) (playerSnapshot, error) {
+	return p.fetch(entry, "", false)
 }
 
 func (p *fortniteAPIStatsProvider) FetchSeason(entry playerCatalogEntry) (playerSnapshot, error) {
-	return p.fetch(entry, "season")
+	return p.fetch(entry, "season", true)
 }
 
-func (p *fortniteAPIStatsProvider) fetch(entry playerCatalogEntry, timeWindow string) (playerSnapshot, error) {
+func (p *fortniteAPIStatsProvider) fetch(entry playerCatalogEntry, timeWindow string, useCache bool) (playerSnapshot, error) {
 	cacheKey := p.cacheKey(entry, timeWindow)
-	if snapshot, ok := p.cachedSnapshot(cacheKey); ok {
-		return snapshot, nil
+	if useCache {
+		if snapshot, ok := p.cachedSnapshot(cacheKey); ok {
+			return snapshot, nil
+		}
 	}
 
 	requestURL := fortniteAPIBaseURL + "/" + url.PathEscape(entry.AccountID)

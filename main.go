@@ -118,7 +118,7 @@ func collectSnapshots(provider statsProvider, store snapshotStore) {
 	log.Printf("Collecting daily snapshots for %s", today)
 
 	for _, entry := range provider.Entries() {
-		snapshot, err := provider.Fetch(entry)
+		snapshot, err := provider.FetchFresh(entry)
 		if err != nil {
 			log.Printf("Failed to fetch stats for %s: %v", entry.Name, err)
 			continue

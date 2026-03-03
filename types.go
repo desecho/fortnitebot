@@ -44,6 +44,7 @@ type statsProvider interface {
 	Count() int
 	Lookup(name string) (playerCatalogEntry, bool)
 	Fetch(entry playerCatalogEntry) (playerSnapshot, error)
+	FetchFresh(entry playerCatalogEntry) (playerSnapshot, error)
 	FetchSeason(entry playerCatalogEntry) (playerSnapshot, error)
 }
 
@@ -175,4 +176,3 @@ type snapshotStore interface {
 	UpsertSnapshot(snapshot dailySnapshot) error
 	RecentSnapshots(accountID string, limit int) ([]dailySnapshot, error)
 }
-

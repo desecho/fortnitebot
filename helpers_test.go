@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type stubStatsProvider struct{}
@@ -26,6 +27,10 @@ func (stubStatsProvider) Lookup(name string) (playerCatalogEntry, bool) {
 }
 
 func (stubStatsProvider) Fetch(entry playerCatalogEntry) (playerSnapshot, error) {
+	return playerSnapshot{}, nil
+}
+
+func (stubStatsProvider) FetchFresh(entry playerCatalogEntry) (playerSnapshot, error) {
 	return playerSnapshot{}, nil
 }
 
@@ -79,11 +84,15 @@ type testPlayer struct {
 }
 
 type configurableStatsProvider struct {
-	names     []string
-	entries   []playerCatalogEntry
-	players   map[string]playerCatalogEntry
-	snapshots map[string]playerSnapshot
-	fetchErr  error
+	names           []string
+	entries         []playerCatalogEntry
+	players         map[string]playerCatalogEntry
+	snapshots       map[string]playerSnapshot
+	fetchErr        error
+	fetchFreshErr   error
+	fetchCount      int
+	fetchFreshCount int
+	countMu         sync.Mutex
 }
 
 func newTestStatsProvider(players ...testPlayer) *configurableStatsProvider {
@@ -100,24 +109,44 @@ func newTestStatsProvider(players ...testPlayer) *configurableStatsProvider {
 	return p
 }
 
-func (p *configurableStatsProvider) Names() []string              { return p.names }
+func (p *configurableStatsProvider) Names() []string               { return p.names }
 func (p *configurableStatsProvider) Entries() []playerCatalogEntry { return p.entries }
-func (p *configurableStatsProvider) Count() int                   { return len(p.entries) }
+func (p *configurableStatsProvider) Count() int                    { return len(p.entries) }
 
 func (p *configurableStatsProvider) Lookup(name string) (playerCatalogEntry, bool) {
 	e, ok := p.players[strings.ToLower(name)]
 	return e, ok
 }
 
-func (p *configurableStatsProvider) Fetch(entry playerCatalogEntry) (playerSnapshot, error) {
-	if p.fetchErr != nil {
-		return playerSnapshot{}, p.fetchErr
-	}
+func (p *configurableStatsProvider) snapshotFor(entry playerCatalogEntry) (playerSnapshot, error) {
 	s, ok := p.snapshots[entry.AccountID]
 	if !ok {
 		return playerSnapshot{}, fmt.Errorf("no snapshot for %s", entry.Name)
 	}
 	return s, nil
+}
+
+func (p *configurableStatsProvider) Fetch(entry playerCatalogEntry) (playerSnapshot, error) {
+	p.countMu.Lock()
+	p.fetchCount++
+	p.countMu.Unlock()
+	if p.fetchErr != nil {
+		return playerSnapshot{}, p.fetchErr
+	}
+	return p.snapshotFor(entry)
+}
+
+func (p *configurableStatsProvider) FetchFresh(entry playerCatalogEntry) (playerSnapshot, error) {
+	p.countMu.Lock()
+	p.fetchFreshCount++
+	p.countMu.Unlock()
+	if p.fetchFreshErr != nil {
+		return playerSnapshot{}, p.fetchFreshErr
+	}
+	if p.fetchErr != nil {
+		return playerSnapshot{}, p.fetchErr
+	}
+	return p.snapshotFor(entry)
 }
 
 func (p *configurableStatsProvider) FetchSeason(entry playerCatalogEntry) (playerSnapshot, error) {

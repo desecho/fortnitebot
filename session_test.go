@@ -454,6 +454,12 @@ func TestCollectSnapshots(t *testing.T) {
 	if !names["Bob"] {
 		t.Fatal("missing snapshot for Bob")
 	}
+	if provider.fetchCount != 0 {
+		t.Fatalf("Fetch() calls = %d, want 0", provider.fetchCount)
+	}
+	if provider.fetchFreshCount != 2 {
+		t.Fatalf("FetchFresh() calls = %d, want 2", provider.fetchFreshCount)
+	}
 }
 
 func TestSnapshotText(t *testing.T) {
@@ -489,6 +495,12 @@ func TestSnapshotText(t *testing.T) {
 		if len(store.upserted) != 2 {
 			t.Fatalf("upserted %d snapshots, want 2", len(store.upserted))
 		}
+		if provider.fetchCount != 0 {
+			t.Fatalf("Fetch() calls = %d, want 0", provider.fetchCount)
+		}
+		if provider.fetchFreshCount != 2 {
+			t.Fatalf("FetchFresh() calls = %d, want 2", provider.fetchFreshCount)
+		}
 	})
 
 	t.Run("fetch error", func(t *testing.T) {
@@ -499,6 +511,12 @@ func TestSnapshotText(t *testing.T) {
 		got := snapshotText(provider, store)
 		if !strings.Contains(got, "Alice: failed to fetch") {
 			t.Fatalf("got = %q, want substring 'Alice: failed to fetch'", got)
+		}
+		if provider.fetchCount != 0 {
+			t.Fatalf("Fetch() calls = %d, want 0", provider.fetchCount)
+		}
+		if provider.fetchFreshCount != 2 {
+			t.Fatalf("FetchFresh() calls = %d, want 2", provider.fetchFreshCount)
 		}
 	})
 

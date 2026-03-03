@@ -642,6 +642,41 @@ func TestFortniteAPIStatsProviderFetch(t *testing.T) {
 		}
 	})
 
+	t.Run("FetchFresh ignores cache and refreshes it", func(t *testing.T) {
+		called := false
+		body := `{"status":200,"data":{"stats":{"all":{"overall":{"wins":7}}}}}`
+		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+			called = true
+			return newTestResponse(r, http.StatusOK, body), nil
+		})
+
+		provider := &fortniteAPIStatsProvider{
+			token:  "test-token",
+			client: client,
+			cache:  make(map[string]cachedSnapshot),
+		}
+		provider.storeCachedSnapshot(provider.cacheKey(entry, ""), playerSnapshot{entry: entry, stats: statLine{Wins: 42}})
+
+		got, err := provider.FetchFresh(entry)
+		if err != nil {
+			t.Fatalf("FetchFresh() error = %v", err)
+		}
+		if !called {
+			t.Fatal("HTTP client was not called, expected FetchFresh to bypass cache")
+		}
+		if got.stats.Wins != 7 {
+			t.Fatalf("Wins = %d, want 7", got.stats.Wins)
+		}
+
+		cached, ok := provider.cachedSnapshot(provider.cacheKey(entry, ""))
+		if !ok {
+			t.Fatal("expected cache to be populated after FetchFresh")
+		}
+		if cached.stats.Wins != 7 {
+			t.Fatalf("cached Wins = %d, want 7", cached.stats.Wins)
+		}
+	})
+
 	t.Run("populates cache after fetch", func(t *testing.T) {
 		body := `{"status":200,"data":{"stats":{"all":{"overall":{"wins":7}}}}}`
 		client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
