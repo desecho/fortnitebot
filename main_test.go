@@ -1,0 +1,286 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+)
+
+type stubStatsProvider struct{}
+
+func (stubStatsProvider) Names() []string {
+	return nil
+}
+
+func (stubStatsProvider) Entries() []playerCatalogEntry {
+	return nil
+}
+
+func (stubStatsProvider) Count() int {
+	return 0
+}
+
+func (stubStatsProvider) Lookup(name string) (playerCatalogEntry, bool) {
+	return playerCatalogEntry{}, false
+}
+
+func (stubStatsProvider) Fetch(entry playerCatalogEntry) (playerSnapshot, error) {
+	return playerSnapshot{}, nil
+}
+
+func (stubStatsProvider) FetchSeason(entry playerCatalogEntry) (playerSnapshot, error) {
+	return playerSnapshot{}, nil
+}
+
+type stubSeasonProvider struct {
+	days int
+	err  error
+}
+
+func (p stubSeasonProvider) DaysLeft() (int, error) {
+	return p.days, p.err
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func newTestHTTPClient(fn roundTripFunc) *http.Client {
+	return &http.Client{Transport: fn}
+}
+
+func newTestResponse(req *http.Request, status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Status:     fmt.Sprintf("%d %s", status, http.StatusText(status)),
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
+	}
+}
+
+func TestLoadConfigIncludesSecondToken(t *testing.T) {
+	t.Setenv("TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("FORTNITE_API_TOKEN", "fortnite-token")
+	t.Setenv("FORTNITE_API2_TOKEN", "fortnite-token-2")
+	t.Setenv("PLAYERS_FILE", "")
+	t.Setenv("POLL_TIMEOUT_SECS", "")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig() error = %v", err)
+	}
+
+	if cfg.botToken != "telegram-token" {
+		t.Fatalf("cfg.botToken = %q, want %q", cfg.botToken, "telegram-token")
+	}
+	if cfg.fortniteAPIToken != "fortnite-token" {
+		t.Fatalf("cfg.fortniteAPIToken = %q, want %q", cfg.fortniteAPIToken, "fortnite-token")
+	}
+	if cfg.fortniteAPI2Token != "fortnite-token-2" {
+		t.Fatalf("cfg.fortniteAPI2Token = %q, want %q", cfg.fortniteAPI2Token, "fortnite-token-2")
+	}
+	if cfg.playersFile != defaultPlayersFile {
+		t.Fatalf("cfg.playersFile = %q, want %q", cfg.playersFile, defaultPlayersFile)
+	}
+	if cfg.pollTimeoutSecs != defaultPollTimeout {
+		t.Fatalf("cfg.pollTimeoutSecs = %d, want %d", cfg.pollTimeoutSecs, defaultPollTimeout)
+	}
+}
+
+func TestLoadConfigRequiresSecondToken(t *testing.T) {
+	t.Setenv("TELEGRAM_BOT_TOKEN", "telegram-token")
+	t.Setenv("FORTNITE_API_TOKEN", "fortnite-token")
+	t.Setenv("FORTNITE_API2_TOKEN", "")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("loadConfig() error = nil, want error")
+	}
+	if err.Error() != "FORTNITE_API2_TOKEN is required" {
+		t.Fatalf("loadConfig() error = %q, want %q", err.Error(), "FORTNITE_API2_TOKEN is required")
+	}
+}
+
+func TestHandleMessageSeasonRoute(t *testing.T) {
+	got := handleMessage(stubStatsProvider{}, stubSeasonProvider{days: 5}, "/season")
+	want := "Season ends in 5 days."
+	if got != want {
+		t.Fatalf("handleMessage() = %q, want %q", got, want)
+	}
+}
+
+func TestSeasonText(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider stubSeasonProvider
+		want     string
+	}{
+		{
+			name:     "singular",
+			provider: stubSeasonProvider{days: 1},
+			want:     "Season ends in 1 day.",
+		},
+		{
+			name:     "plural",
+			provider: stubSeasonProvider{days: 3},
+			want:     "Season ends in 3 days.",
+		},
+		{
+			name:     "ended",
+			provider: stubSeasonProvider{days: 0},
+			want:     "The current season has ended.",
+		},
+		{
+			name:     "error",
+			provider: stubSeasonProvider{err: errors.New("boom")},
+			want:     "Failed to fetch season info: boom",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := seasonText(tt.provider); got != tt.want {
+				t.Fatalf("seasonText() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestDaysLeftUntil(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name string
+		end  time.Time
+		want int
+	}{
+		{
+			name: "partial day rounds up",
+			end:  now.Add(23 * time.Hour),
+			want: 1,
+		},
+		{
+			name: "exact days stay exact",
+			end:  now.Add(48 * time.Hour),
+			want: 2,
+		},
+		{
+			name: "past season returns zero",
+			end:  now.Add(-1 * time.Hour),
+			want: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := daysLeftUntil(now, tt.end); got != tt.want {
+				t.Fatalf("daysLeftUntil() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFortniteAPISeasonProviderDaysLeft(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	var (
+		sawHeader     bool
+		receivedToken string
+	)
+
+	client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+		sawHeader = true
+		receivedToken = r.Header.Get("x-api-key")
+		return newTestResponse(r, http.StatusOK, `{"seasonDateEnd":"2026-01-02T12:00:00Z"}`), nil
+	})
+
+	provider := &fortniteAPISeasonProvider{
+		token:  "secret-2",
+		client: client,
+		url:    "http://example.invalid/season",
+		now: func() time.Time {
+			return now
+		},
+	}
+
+	days, err := provider.DaysLeft()
+	if err != nil {
+		t.Fatalf("DaysLeft() error = %v", err)
+	}
+	if !sawHeader {
+		t.Fatal("server did not receive a request")
+	}
+	if receivedToken != "secret-2" {
+		t.Fatalf("x-api-key = %q, want %q", receivedToken, "secret-2")
+	}
+	if days != 2 {
+		t.Fatalf("DaysLeft() = %d, want %d", days, 2)
+	}
+}
+
+func TestFortniteAPISeasonProviderDaysLeftErrors(t *testing.T) {
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name    string
+		status  int
+		body    string
+		wantErr string
+	}{
+		{
+			name:    "non-200 response",
+			status:  http.StatusBadGateway,
+			body:    `{"error":"bad gateway"}`,
+			wantErr: "fortnite api 2 returned 502 Bad Gateway",
+		},
+		{
+			name:    "invalid json",
+			status:  http.StatusOK,
+			body:    `{"seasonDateEnd":`,
+			wantErr: "decode season data:",
+		},
+		{
+			name:    "missing end date",
+			status:  http.StatusOK,
+			body:    `{}`,
+			wantErr: "seasonDateEnd is missing",
+		},
+		{
+			name:    "invalid end date",
+			status:  http.StatusOK,
+			body:    `{"seasonDateEnd":"not-a-date"}`,
+			wantErr: "parse seasonDateEnd:",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+				return newTestResponse(r, tt.status, tt.body), nil
+			})
+
+			provider := &fortniteAPISeasonProvider{
+				token:  "secret-2",
+				client: client,
+				url:    "http://example.invalid/season",
+				now: func() time.Time {
+					return now
+				},
+			}
+
+			_, err := provider.DaysLeft()
+			if err == nil {
+				t.Fatal("DaysLeft() error = nil, want error")
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("DaysLeft() error = %q, want substring %q", err.Error(), tt.wantErr)
+			}
+		})
+	}
+}

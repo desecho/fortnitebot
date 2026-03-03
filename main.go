@@ -17,17 +17,19 @@ import (
 )
 
 const (
-	defaultPlayersFile = "players.json"
-	defaultPollTimeout = 30
-	fortniteAPIBaseURL = "https://fortnite-api.com/v2/stats/br/v2"
-	statsCacheTTL      = 1 * time.Hour
+	defaultPlayersFile   = "players.json"
+	defaultPollTimeout   = 30
+	fortniteAPIBaseURL   = "https://fortnite-api.com/v2/stats/br/v2"
+	fortniteAPISeasonURL = "https://prod.api-fortnite.com/api/v1/season"
+	statsCacheTTL        = 1 * time.Hour
 )
 
 type appConfig struct {
-	botToken         string
-	fortniteAPIToken string
-	playersFile      string
-	pollTimeoutSecs  int
+	botToken          string
+	fortniteAPIToken  string
+	fortniteAPI2Token string
+	playersFile       string
+	pollTimeoutSecs   int
 }
 
 type playerCatalogEntry struct {
@@ -60,6 +62,10 @@ type statsProvider interface {
 	FetchSeason(entry playerCatalogEntry) (playerSnapshot, error)
 }
 
+type seasonProvider interface {
+	DaysLeft() (int, error)
+}
+
 type fortniteAPIStatsProvider struct {
 	order   []string
 	players map[string]playerCatalogEntry
@@ -67,6 +73,13 @@ type fortniteAPIStatsProvider struct {
 	client  *http.Client
 	cache   map[string]cachedSnapshot
 	cacheMu sync.RWMutex
+}
+
+type fortniteAPISeasonProvider struct {
+	token  string
+	client *http.Client
+	url    string
+	now    func() time.Time
 }
 
 type fortniteStatsResponse struct {
@@ -78,6 +91,10 @@ type fortniteStatsResponse struct {
 			} `json:"all"`
 		} `json:"stats"`
 	} `json:"data"`
+}
+
+type fortniteSeasonResponse struct {
+	SeasonDateEnd string `json:"seasonDateEnd"`
 }
 
 type statLine struct {
@@ -140,8 +157,9 @@ func main() {
 		log.Fatal(err)
 	}
 
+	seasonProvider := newFortniteAPISeasonProvider(cfg.fortniteAPI2Token)
 	client := newTelegramClient(cfg.botToken)
-	if err := runBot(client, provider, cfg.pollTimeoutSecs); err != nil {
+	if err := runBot(client, provider, seasonProvider, cfg.pollTimeoutSecs); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -155,6 +173,11 @@ func loadConfig() (appConfig, error) {
 	fortniteToken := strings.TrimSpace(os.Getenv("FORTNITE_API_TOKEN"))
 	if fortniteToken == "" {
 		return appConfig{}, errors.New("FORTNITE_API_TOKEN is required")
+	}
+
+	fortniteToken2 := strings.TrimSpace(os.Getenv("FORTNITE_API2_TOKEN"))
+	if fortniteToken2 == "" {
+		return appConfig{}, errors.New("FORTNITE_API2_TOKEN is required")
 	}
 
 	playersFile := strings.TrimSpace(os.Getenv("PLAYERS_FILE"))
@@ -172,10 +195,11 @@ func loadConfig() (appConfig, error) {
 	}
 
 	return appConfig{
-		botToken:         token,
-		fortniteAPIToken: fortniteToken,
-		playersFile:      playersFile,
-		pollTimeoutSecs:  pollTimeout,
+		botToken:          token,
+		fortniteAPIToken:  fortniteToken,
+		fortniteAPI2Token: fortniteToken2,
+		playersFile:       playersFile,
+		pollTimeoutSecs:   pollTimeout,
 	}, nil
 }
 
@@ -225,6 +249,19 @@ func newFortniteAPIStatsProvider(playersFile, apiToken string) (*fortniteAPIStat
 	}
 
 	return provider, nil
+}
+
+func newFortniteAPISeasonProvider(apiToken string) *fortniteAPISeasonProvider {
+	return &fortniteAPISeasonProvider{
+		token: apiToken,
+		client: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+		url: fortniteAPISeasonURL,
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
+	}
 }
 
 func (p *fortniteAPIStatsProvider) Names() []string {
@@ -349,6 +386,59 @@ func (p *fortniteAPIStatsProvider) storeCachedSnapshot(cacheKey string, snapshot
 	p.cacheMu.Unlock()
 }
 
+func (p *fortniteAPISeasonProvider) DaysLeft() (int, error) {
+	req, err := http.NewRequest(http.MethodGet, p.url, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("x-api-key", p.token)
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("request season data: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("fortnite api 2 returned %s", resp.Status)
+	}
+
+	var payload fortniteSeasonResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return 0, fmt.Errorf("decode season data: %w", err)
+	}
+
+	seasonDateEnd := strings.TrimSpace(payload.SeasonDateEnd)
+	if seasonDateEnd == "" {
+		return 0, errors.New("seasonDateEnd is missing")
+	}
+
+	endTime, err := time.Parse(time.RFC3339, seasonDateEnd)
+	if err != nil {
+		return 0, fmt.Errorf("parse seasonDateEnd: %w", err)
+	}
+
+	return daysLeftUntil(p.now(), endTime), nil
+}
+
+func daysLeftUntil(now, seasonDateEnd time.Time) int {
+	now = now.UTC()
+	seasonDateEnd = seasonDateEnd.UTC()
+	if !seasonDateEnd.After(now) {
+		return 0
+	}
+
+	remaining := seasonDateEnd.Sub(now)
+	days := int(remaining / (24 * time.Hour))
+	if remaining%(24*time.Hour) != 0 {
+		days++
+	}
+	if days < 1 {
+		return 1
+	}
+	return days
+}
+
 func newTelegramClient(token string) *telegramClient {
 	return &telegramClient{
 		baseURL: "https://api.telegram.org/bot" + token,
@@ -358,7 +448,7 @@ func newTelegramClient(token string) *telegramClient {
 	}
 }
 
-func runBot(client *telegramClient, provider statsProvider, pollTimeout int) error {
+func runBot(client *telegramClient, provider statsProvider, season seasonProvider, pollTimeout int) error {
 	var offset int64
 
 	log.Printf("Bot is running with %d configured player(s).", provider.Count())
@@ -377,7 +467,7 @@ func runBot(client *telegramClient, provider statsProvider, pollTimeout int) err
 				continue
 			}
 
-			response := handleMessage(provider, update.Message.Text)
+			response := handleMessage(provider, season, update.Message.Text)
 			if strings.TrimSpace(response) == "" {
 				continue
 			}
@@ -456,7 +546,7 @@ func (c *telegramClient) sendMessage(chatID int64, text string) error {
 	return nil
 }
 
-func handleMessage(provider statsProvider, text string) string {
+func handleMessage(provider statsProvider, season seasonProvider, text string) string {
 	fields := strings.Fields(strings.TrimSpace(text))
 	if len(fields) == 0 {
 		return ""
@@ -470,6 +560,8 @@ func handleMessage(provider statsProvider, text string) string {
 		return helpText(provider)
 	case "/players":
 		return playersText(provider)
+	case "/season":
+		return seasonText(season)
 	case "/stats":
 		return statsText(provider, args, false)
 	case "/seasonstats":
@@ -497,6 +589,7 @@ func helpText(provider statsProvider) string {
 		"",
 		"Commands:",
 		"/players",
+		"/season",
 		"/stats [player]",
 		"/seasonstats [player]",
 		"/compare <player1> <player2> [player3 ...]",
@@ -514,6 +607,20 @@ func playersText(provider statsProvider) string {
 	}
 
 	return "Configured players:\n" + strings.Join(names, "\n")
+}
+
+func seasonText(provider seasonProvider) string {
+	daysLeft, err := provider.DaysLeft()
+	if err != nil {
+		return fmt.Sprintf("Failed to fetch season info: %v", err)
+	}
+	if daysLeft == 0 {
+		return "The current season has ended."
+	}
+	if daysLeft == 1 {
+		return "Season ends in 1 day."
+	}
+	return fmt.Sprintf("Season ends in %d days.", daysLeft)
 }
 
 func statsText(provider statsProvider, args []string, season bool) string {

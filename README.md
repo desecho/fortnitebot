@@ -18,6 +18,7 @@ The included `data.json` file is only a sample response payload reference. The b
 ## Commands
 
 - `/players`
+- `/season`
 - `/stats [player]`
 - `/seasonstats [player]`
 - `/compare <player1> <player2> [player3 ...]`
@@ -31,6 +32,7 @@ The included `data.json` file is only a sample response payload reference. The b
 ```bash
 export TELEGRAM_BOT_TOKEN=your_bot_token_here
 export FORTNITE_API_TOKEN=your_fortnite_api_token_here
+export FORTNITE_API2_TOKEN=your_second_fortnite_api_token_here
 ```
 
 3. Run the bot:
@@ -53,6 +55,7 @@ Run the bot:
 docker run --rm \
   -e TELEGRAM_BOT_TOKEN=your_bot_token_here \
   -e FORTNITE_API_TOKEN=your_fortnite_api_token_here \
+  -e FORTNITE_API2_TOKEN=your_second_fortnite_api_token_here \
   fortnitebot
 ```
 
@@ -80,6 +83,8 @@ To add a friend, add another object with their player name and account ID.
 
 - The bot uses Telegram long polling over the official Bot API.
 - The bot sends the `Authorization` header using `FORTNITE_API_TOKEN` when it calls the Fortnite API.
+- The bot sends the `x-api-key` header using `FORTNITE_API2_TOKEN` when it calls `https://prod.api-fortnite.com/api/v1/season`.
+- `/season` reads `seasonDateEnd` from that response and reports how many days are left in the current season.
 - `/stats` fetches and lists `stats.all.overall` for every player in `players.json`, or only one player when called as `/stats <player>`.
 - `/seasonstats` fetches and lists `stats.all.overall` for every player in `players.json` using `?timeWindow=season`, or only one player when called as `/seasonstats <player>`.
 - `/compare` compares two or more players using `stats.all.overall`.

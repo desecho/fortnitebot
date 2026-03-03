@@ -66,6 +66,7 @@ jobs:
         run: |
           kubectl create secret generic "$PROJECT" --from-literal=TELEGRAM_BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN }}" \
             --from-literal=FORTNITE_API_TOKEN="${{ secrets.FORTNITE_API_TOKEN }}" \
+            --from-literal=FORTNITE_API2_TOKEN="${{ secrets.FORTNITE_API2_TOKEN }}" \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -f deployment/deployment.yaml
           kubectl rollout restart "deployment/$PROJECT"
