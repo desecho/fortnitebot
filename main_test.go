@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -43,6 +44,15 @@ type stubSeasonProvider struct {
 
 func (p stubSeasonProvider) DaysLeft() (int, error) {
 	return p.days, p.err
+}
+
+type stubStatusProvider struct {
+	summary fortniteStatusSummary
+	err     error
+}
+
+func (p stubStatusProvider) Summary() (fortniteStatusSummary, error) {
+	return p.summary, p.err
 }
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -109,8 +119,39 @@ func TestLoadConfigRequiresSecondToken(t *testing.T) {
 }
 
 func TestHandleMessageSeasonRoute(t *testing.T) {
-	got := handleMessage(stubStatsProvider{}, stubSeasonProvider{days: 5}, "/season")
+	got := handleMessage(stubStatsProvider{}, stubSeasonProvider{days: 5}, stubStatusProvider{}, "/season")
 	want := "Season ends in 5 days."
+	if got != want {
+		t.Fatalf("handleMessage() = %q, want %q", got, want)
+	}
+}
+
+func TestHandleMessageStatusRoute(t *testing.T) {
+	got := handleMessage(
+		stubStatsProvider{},
+		stubSeasonProvider{},
+		stubStatusProvider{
+			summary: fortniteStatusSummary{
+				Epic:     "All Systems Operational",
+				Fortnite: "Operational",
+				Services: []fortniteServiceStatus{
+					{Name: "Game Services", Status: "Operational"},
+					{Name: "Matchmaking", Status: "Operational"},
+				},
+			},
+		},
+		"/status",
+	)
+
+	want := strings.Join([]string{
+		"Fortnite status",
+		"Epic overall: All Systems Operational",
+		"Fortnite overall: Operational",
+		"Services:",
+		"Game Services: Operational",
+		"Matchmaking: Operational",
+	}, "\n")
+
 	if got != want {
 		t.Fatalf("handleMessage() = %q, want %q", got, want)
 	}
@@ -150,6 +191,14 @@ func TestSeasonText(t *testing.T) {
 				t.Fatalf("seasonText() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStatusTextError(t *testing.T) {
+	got := statusText(stubStatusProvider{err: errors.New("boom")})
+	want := "Failed to fetch Fortnite status: boom"
+	if got != want {
+		t.Fatalf("statusText() = %q, want %q", got, want)
 	}
 }
 
@@ -282,5 +331,58 @@ func TestFortniteAPISeasonProviderDaysLeftErrors(t *testing.T) {
 				t.Fatalf("DaysLeft() error = %q, want substring %q", err.Error(), tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestEpicStatusProviderSummary(t *testing.T) {
+	body, err := os.ReadFile("data.json")
+	if err != nil {
+		t.Fatalf("ReadFile(data.json) error = %v", err)
+	}
+
+	client := newTestHTTPClient(func(r *http.Request) (*http.Response, error) {
+		return newTestResponse(r, http.StatusOK, string(body)), nil
+	})
+
+	provider := &epicStatusProvider{
+		client: client,
+		url:    "http://example.invalid/status",
+	}
+
+	summary, err := provider.Summary()
+	if err != nil {
+		t.Fatalf("Summary() error = %v", err)
+	}
+
+	if summary.Epic != "All Systems Operational" {
+		t.Fatalf("summary.Epic = %q, want %q", summary.Epic, "All Systems Operational")
+	}
+	if summary.Fortnite != "Operational" {
+		t.Fatalf("summary.Fortnite = %q, want %q", summary.Fortnite, "Operational")
+	}
+
+	wantNames := []string{
+		"Website",
+		"Game Services",
+		"Login",
+		"Parties, Friends, and Messaging",
+		"Voice Chat",
+		"Matchmaking",
+		"Stats and Leaderboards",
+		"Item Shop",
+		"Fortnite Crew",
+	}
+
+	if len(summary.Services) != len(wantNames) {
+		t.Fatalf("len(summary.Services) = %d, want %d", len(summary.Services), len(wantNames))
+	}
+
+	for i, wantName := range wantNames {
+		if summary.Services[i].Name != wantName {
+			t.Fatalf("summary.Services[%d].Name = %q, want %q", i, summary.Services[i].Name, wantName)
+		}
+		if summary.Services[i].Status != "Operational" {
+			t.Fatalf("summary.Services[%d].Status = %q, want %q", i, summary.Services[i].Status, "Operational")
+		}
 	}
 }

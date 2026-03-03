@@ -21,6 +21,7 @@ const (
 	defaultPollTimeout   = 30
 	fortniteAPIBaseURL   = "https://fortnite-api.com/v2/stats/br/v2"
 	fortniteAPISeasonURL = "https://prod.api-fortnite.com/api/v1/season"
+	epicStatusSummaryURL = "https://status.epicgames.com/api/v2/summary.json"
 	statsCacheTTL        = 1 * time.Hour
 )
 
@@ -66,6 +67,10 @@ type seasonProvider interface {
 	DaysLeft() (int, error)
 }
 
+type statusProvider interface {
+	Summary() (fortniteStatusSummary, error)
+}
+
 type fortniteAPIStatsProvider struct {
 	order   []string
 	players map[string]playerCatalogEntry
@@ -82,6 +87,11 @@ type fortniteAPISeasonProvider struct {
 	now    func() time.Time
 }
 
+type epicStatusProvider struct {
+	client *http.Client
+	url    string
+}
+
 type fortniteStatsResponse struct {
 	Status int `json:"status"`
 	Data   struct {
@@ -95,6 +105,33 @@ type fortniteStatsResponse struct {
 
 type fortniteSeasonResponse struct {
 	SeasonDateEnd string `json:"seasonDateEnd"`
+}
+
+type fortniteStatusSummary struct {
+	Epic     string
+	Fortnite string
+	Services []fortniteServiceStatus
+}
+
+type fortniteServiceStatus struct {
+	Name   string
+	Status string
+}
+
+type epicStatusSummaryResponse struct {
+	Components []epicStatusComponent `json:"components"`
+	Status     struct {
+		Description string `json:"description"`
+	} `json:"status"`
+}
+
+type epicStatusComponent struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Status     string   `json:"status"`
+	Group      bool     `json:"group"`
+	GroupID    string   `json:"group_id"`
+	Components []string `json:"components"`
 }
 
 type statLine struct {
@@ -158,8 +195,9 @@ func main() {
 	}
 
 	seasonProvider := newFortniteAPISeasonProvider(cfg.fortniteAPI2Token)
+	statusSource := newEpicStatusProvider()
 	client := newTelegramClient(cfg.botToken)
-	if err := runBot(client, provider, seasonProvider, cfg.pollTimeoutSecs); err != nil {
+	if err := runBot(client, provider, seasonProvider, statusSource, cfg.pollTimeoutSecs); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -261,6 +299,15 @@ func newFortniteAPISeasonProvider(apiToken string) *fortniteAPISeasonProvider {
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
+	}
+}
+
+func newEpicStatusProvider() *epicStatusProvider {
+	return &epicStatusProvider{
+		client: &http.Client{
+			Timeout: 15 * time.Second,
+		},
+		url: epicStatusSummaryURL,
 	}
 }
 
@@ -421,6 +468,102 @@ func (p *fortniteAPISeasonProvider) DaysLeft() (int, error) {
 	return daysLeftUntil(p.now(), endTime), nil
 }
 
+func (p *epicStatusProvider) Summary() (fortniteStatusSummary, error) {
+	req, err := http.NewRequest(http.MethodGet, p.url, nil)
+	if err != nil {
+		return fortniteStatusSummary{}, err
+	}
+
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return fortniteStatusSummary{}, fmt.Errorf("request status data: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fortniteStatusSummary{}, fmt.Errorf("epic status returned %s", resp.Status)
+	}
+
+	var payload epicStatusSummaryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return fortniteStatusSummary{}, fmt.Errorf("decode status data: %w", err)
+	}
+
+	summary, err := extractFortniteStatusSummary(payload)
+	if err != nil {
+		return fortniteStatusSummary{}, fmt.Errorf("parse status data: %w", err)
+	}
+
+	return summary, nil
+}
+
+func extractFortniteStatusSummary(payload epicStatusSummaryResponse) (fortniteStatusSummary, error) {
+	componentsByID := make(map[string]epicStatusComponent, len(payload.Components))
+	var (
+		fortnite epicStatusComponent
+		found    bool
+	)
+
+	for _, component := range payload.Components {
+		componentsByID[component.ID] = component
+		if !found && component.Group && strings.EqualFold(strings.TrimSpace(component.Name), "Fortnite") {
+			fortnite = component
+			found = true
+		}
+	}
+
+	if !found {
+		for _, component := range payload.Components {
+			if strings.EqualFold(strings.TrimSpace(component.Name), "Fortnite") {
+				fortnite = component
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		return fortniteStatusSummary{}, errors.New("fortnite component is missing")
+	}
+
+	services := make([]fortniteServiceStatus, 0, len(fortnite.Components))
+	seen := make(map[string]struct{}, len(fortnite.Components))
+	for _, componentID := range fortnite.Components {
+		component, ok := componentsByID[componentID]
+		if !ok {
+			continue
+		}
+
+		services = append(services, fortniteServiceStatus{
+			Name:   strings.TrimSpace(component.Name),
+			Status: humanizeStatus(component.Status),
+		})
+		seen[componentID] = struct{}{}
+	}
+
+	if len(services) == 0 {
+		for _, component := range payload.Components {
+			if component.GroupID != fortnite.ID {
+				continue
+			}
+			if _, exists := seen[component.ID]; exists {
+				continue
+			}
+
+			services = append(services, fortniteServiceStatus{
+				Name:   strings.TrimSpace(component.Name),
+				Status: humanizeStatus(component.Status),
+			})
+		}
+	}
+
+	return fortniteStatusSummary{
+		Epic:     strings.TrimSpace(payload.Status.Description),
+		Fortnite: humanizeStatus(fortnite.Status),
+		Services: services,
+	}, nil
+}
+
 func daysLeftUntil(now, seasonDateEnd time.Time) int {
 	now = now.UTC()
 	seasonDateEnd = seasonDateEnd.UTC()
@@ -448,7 +591,7 @@ func newTelegramClient(token string) *telegramClient {
 	}
 }
 
-func runBot(client *telegramClient, provider statsProvider, season seasonProvider, pollTimeout int) error {
+func runBot(client *telegramClient, provider statsProvider, season seasonProvider, status statusProvider, pollTimeout int) error {
 	var offset int64
 
 	log.Printf("Bot is running with %d configured player(s).", provider.Count())
@@ -467,7 +610,7 @@ func runBot(client *telegramClient, provider statsProvider, season seasonProvide
 				continue
 			}
 
-			response := handleMessage(provider, season, update.Message.Text)
+			response := handleMessage(provider, season, status, update.Message.Text)
 			if strings.TrimSpace(response) == "" {
 				continue
 			}
@@ -546,7 +689,7 @@ func (c *telegramClient) sendMessage(chatID int64, text string) error {
 	return nil
 }
 
-func handleMessage(provider statsProvider, season seasonProvider, text string) string {
+func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, text string) string {
 	fields := strings.Fields(strings.TrimSpace(text))
 	if len(fields) == 0 {
 		return ""
@@ -562,6 +705,8 @@ func handleMessage(provider statsProvider, season seasonProvider, text string) s
 		return playersText(provider)
 	case "/season":
 		return seasonText(season)
+	case "/status":
+		return statusText(status)
 	case "/stats":
 		return statsText(provider, args, false)
 	case "/seasonstats":
@@ -590,6 +735,7 @@ func helpText(provider statsProvider) string {
 		"Commands:",
 		"/players",
 		"/season",
+		"/status",
 		"/stats [player]",
 		"/seasonstats [player]",
 		"/compare <player1> <player2> [player3 ...]",
@@ -621,6 +767,31 @@ func seasonText(provider seasonProvider) string {
 		return "Season ends in 1 day."
 	}
 	return fmt.Sprintf("Season ends in %d days.", daysLeft)
+}
+
+func statusText(provider statusProvider) string {
+	summary, err := provider.Summary()
+	if err != nil {
+		return fmt.Sprintf("Failed to fetch Fortnite status: %v", err)
+	}
+
+	lines := []string{
+		"Fortnite status",
+		fmt.Sprintf("Epic overall: %s", fallbackText(summary.Epic, "Unknown")),
+		fmt.Sprintf("Fortnite overall: %s", fallbackText(summary.Fortnite, "Unknown")),
+	}
+
+	if len(summary.Services) == 0 {
+		lines = append(lines, "No Fortnite services are listed.")
+		return strings.Join(lines, "\n")
+	}
+
+	lines = append(lines, "Services:")
+	for _, service := range summary.Services {
+		lines = append(lines, fmt.Sprintf("%s: %s", fallbackText(service.Name, "Unknown"), fallbackText(service.Status, "Unknown")))
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func statsText(provider statsProvider, args []string, season bool) string {
@@ -780,6 +951,28 @@ func formatStats(player playerSnapshot) string {
 
 func hoursPlayed(minutes int64) float64 {
 	return float64(minutes) / 60
+}
+
+func humanizeStatus(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+
+	words := strings.Fields(strings.ReplaceAll(value, "_", " "))
+	for i, word := range words {
+		words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
+	}
+
+	return strings.Join(words, " ")
+}
+
+func fallbackText(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func playerLabel(player playerSnapshot) string {
