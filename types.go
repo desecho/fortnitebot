@@ -132,5 +132,47 @@ type statLine struct {
 	Matches       int64   `json:"matches"`
 	WinRate       float64 `json:"winRate"`
 	MinutesPlayed int64   `json:"minutesPlayed"`
+	Top3          int64   `json:"top3"`
+	Top5          int64   `json:"top5"`
+	Top6          int64   `json:"top6"`
+	Top10         int64   `json:"top10"`
+	Top12         int64   `json:"top12"`
+	Top25         int64   `json:"top25"`
+}
+
+type dailyStatLine struct {
+	Wins          int64 `bson:"wins"          json:"wins"`
+	Top3          int64 `bson:"top3"          json:"top3"`
+	Top5          int64 `bson:"top5"          json:"top5"`
+	Top6          int64 `bson:"top6"          json:"top6"`
+	Top10         int64 `bson:"top10"         json:"top10"`
+	Top12         int64 `bson:"top12"         json:"top12"`
+	Top25         int64 `bson:"top25"         json:"top25"`
+	Kills         int64 `bson:"kills"         json:"kills"`
+	Deaths        int64 `bson:"deaths"        json:"deaths"`
+	Matches       int64 `bson:"matches"       json:"matches"`
+	MinutesPlayed int64 `bson:"minutesPlayed" json:"minutesPlayed"`
+}
+
+type dailySnapshot struct {
+	AccountID string        `bson:"accountId"  json:"accountId"`
+	Name      string        `bson:"name"       json:"name"`
+	Date      string        `bson:"date"       json:"date"`
+	Stats     dailyStatLine `bson:"stats"      json:"stats"`
+	CreatedAt time.Time     `bson:"createdAt"  json:"createdAt"`
+}
+
+type sessionSummary struct {
+	PlayerName    string
+	Date          string
+	Delta         dailyStatLine
+	KillsPerMatch float64
+	KD            float64
+	WinRate       float64
+}
+
+type snapshotStore interface {
+	UpsertSnapshot(snapshot dailySnapshot) error
+	RecentSnapshots(accountID string, limit int) ([]dailySnapshot, error)
 }
 

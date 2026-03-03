@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, text string) string {
+func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, text string) string {
 	fields := strings.Fields(strings.TrimSpace(text))
 	if len(fields) == 0 {
 		return ""
@@ -33,6 +33,10 @@ func handleMessage(provider statsProvider, season seasonProvider, status statusP
 		return compareText(provider, args, false)
 	case "/seasoncompare":
 		return compareText(provider, args, true)
+	case "/session":
+		return sessionText(provider, store, args)
+	case "/sessions":
+		return sessionsText(provider, store, args)
 	default:
 		return "Unknown command. Use /help to see the available commands."
 	}
@@ -58,6 +62,8 @@ func helpText() string {
 		"/seasonstats [player]",
 		"/compare <player1> <player2> [player3 ...]",
 		"/seasoncompare <player1> <player2> [player3 ...]",
+		"/session [player]",
+		"/sessions [player]",
 	}
 
 	lines = append(lines, "", "Use /players to see the configured player names.")
@@ -281,6 +287,175 @@ func fallbackText(value, fallback string) string {
 
 func playerLabel(player playerSnapshot) string {
 	return player.entry.Name
+}
+
+func sessionText(provider statsProvider, store snapshotStore, args []string) string {
+	if store == nil {
+		return "Session tracking is not configured."
+	}
+	if provider.Count() == 0 {
+		return "No players are configured."
+	}
+	if len(args) > 1 {
+		return "Usage: /session [player]"
+	}
+
+	if len(args) == 1 {
+		entry, ok := provider.Lookup(args[0])
+		if !ok {
+			return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[0])
+		}
+		return formatPlayerSession(store, entry)
+	}
+
+	var results []string
+	for _, entry := range provider.Entries() {
+		results = append(results, formatPlayerSession(store, entry))
+	}
+	return strings.Join(results, "\n\n")
+}
+
+func formatPlayerSession(store snapshotStore, entry playerCatalogEntry) string {
+	snapshots, err := store.RecentSnapshots(entry.AccountID, 2)
+	if err != nil {
+		return fmt.Sprintf("%s\nFailed to fetch session data: %v", entry.Name, err)
+	}
+	if len(snapshots) < 2 {
+		return fmt.Sprintf("%s\nNot enough data to detect a session yet.", entry.Name)
+	}
+
+	session := detectSession(entry.Name, snapshots[0], snapshots[1])
+	if session == nil {
+		return fmt.Sprintf("%s\nNo recent gaming session detected.", entry.Name)
+	}
+
+	return formatSession(*session)
+}
+
+func sessionsText(provider statsProvider, store snapshotStore, args []string) string {
+	if store == nil {
+		return "Session tracking is not configured."
+	}
+	if provider.Count() == 0 {
+		return "No players are configured."
+	}
+	if len(args) > 1 {
+		return "Usage: /sessions [player]"
+	}
+
+	if len(args) == 1 {
+		entry, ok := provider.Lookup(args[0])
+		if !ok {
+			return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[0])
+		}
+		return formatPlayerSessions(store, entry)
+	}
+
+	var results []string
+	for _, entry := range provider.Entries() {
+		results = append(results, formatPlayerSessions(store, entry))
+	}
+	return strings.Join(results, "\n\n")
+}
+
+func formatPlayerSessions(store snapshotStore, entry playerCatalogEntry) string {
+	snapshots, err := store.RecentSnapshots(entry.AccountID, 8)
+	if err != nil {
+		return fmt.Sprintf("%s\nFailed to fetch session data: %v", entry.Name, err)
+	}
+	if len(snapshots) < 2 {
+		return fmt.Sprintf("%s\nNot enough data to detect sessions yet.", entry.Name)
+	}
+
+	var sessions []sessionSummary
+	for i := 0; i < len(snapshots)-1; i++ {
+		session := detectSession(entry.Name, snapshots[i], snapshots[i+1])
+		if session != nil {
+			sessions = append(sessions, *session)
+		}
+	}
+
+	if len(sessions) == 0 {
+		return fmt.Sprintf("%s\nNo recent gaming sessions detected.", entry.Name)
+	}
+
+	lines := []string{fmt.Sprintf("%s - Recent sessions", entry.Name)}
+	for _, s := range sessions {
+		lines = append(lines, formatSessionCompact(s))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func detectSession(playerName string, newer, older dailySnapshot) *sessionSummary {
+	if newer.Stats.Matches <= older.Stats.Matches {
+		return nil
+	}
+
+	delta := dailyStatLine{
+		Wins:          newer.Stats.Wins - older.Stats.Wins,
+		Top3:          newer.Stats.Top3 - older.Stats.Top3,
+		Top5:          newer.Stats.Top5 - older.Stats.Top5,
+		Top6:          newer.Stats.Top6 - older.Stats.Top6,
+		Top10:         newer.Stats.Top10 - older.Stats.Top10,
+		Top12:         newer.Stats.Top12 - older.Stats.Top12,
+		Top25:         newer.Stats.Top25 - older.Stats.Top25,
+		Kills:         newer.Stats.Kills - older.Stats.Kills,
+		Deaths:        newer.Stats.Deaths - older.Stats.Deaths,
+		Matches:       newer.Stats.Matches - older.Stats.Matches,
+		MinutesPlayed: newer.Stats.MinutesPlayed - older.Stats.MinutesPlayed,
+	}
+
+	var kd float64
+	if delta.Deaths > 0 {
+		kd = float64(delta.Kills) / float64(delta.Deaths)
+	}
+
+	var winRate float64
+	if delta.Matches > 0 {
+		winRate = float64(delta.Wins) / float64(delta.Matches) * 100
+	}
+
+	var killsPerMatch float64
+	if delta.Matches > 0 {
+		killsPerMatch = float64(delta.Kills) / float64(delta.Matches)
+	}
+
+	return &sessionSummary{
+		PlayerName:    playerName,
+		Date:          newer.Date,
+		Delta:         delta,
+		KillsPerMatch: killsPerMatch,
+		KD:            kd,
+		WinRate:       winRate,
+	}
+}
+
+func formatSession(s sessionSummary) string {
+	lines := []string{
+		fmt.Sprintf("%s - Session %s", s.PlayerName, s.Date),
+		fmt.Sprintf("Matches: %d", s.Delta.Matches),
+		fmt.Sprintf("Wins: %d", s.Delta.Wins),
+		fmt.Sprintf("Kills: %d", s.Delta.Kills),
+		fmt.Sprintf("Kills/match: %.2f", s.KillsPerMatch),
+		fmt.Sprintf("Deaths: %d", s.Delta.Deaths),
+		fmt.Sprintf("K/D: %.2f", s.KD),
+		fmt.Sprintf("Win rate: %.2f%%", s.WinRate),
+		fmt.Sprintf("Top 3: %d", s.Delta.Top3),
+		fmt.Sprintf("Top 5: %d", s.Delta.Top5),
+		fmt.Sprintf("Top 6: %d", s.Delta.Top6),
+		fmt.Sprintf("Top 10: %d", s.Delta.Top10),
+		fmt.Sprintf("Top 12: %d", s.Delta.Top12),
+		fmt.Sprintf("Top 25: %d", s.Delta.Top25),
+		fmt.Sprintf("Time played: %.1fh", float64(s.Delta.MinutesPlayed)/60),
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatSessionCompact(s sessionSummary) string {
+	return fmt.Sprintf(
+		"%s: %d matches, %d wins, %d kills, %.2f K/D, %.0f%% WR",
+		s.Date, s.Delta.Matches, s.Delta.Wins, s.Delta.Kills, s.KD, s.WinRate,
+	)
 }
 
 func leaderLabel(players []playerSnapshot, valueFn func(statLine) float64, lowerIsBetter bool) string {

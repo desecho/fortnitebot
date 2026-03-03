@@ -337,6 +337,22 @@ func daysLeftUntil(now, seasonDateEnd time.Time) int {
 	return days
 }
 
+func extractDailyStats(s statLine) dailyStatLine {
+	return dailyStatLine{
+		Wins:          s.Wins,
+		Top3:          s.Top3,
+		Top5:          s.Top5,
+		Top6:          s.Top6,
+		Top10:         s.Top10,
+		Top12:         s.Top12,
+		Top25:         s.Top25,
+		Kills:         s.Kills,
+		Deaths:        s.Deaths,
+		Matches:       s.Matches,
+		MinutesPlayed: s.MinutesPlayed,
+	}
+}
+
 func humanizeStatus(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {

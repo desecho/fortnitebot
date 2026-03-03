@@ -8,7 +8,7 @@ import (
 )
 
 func TestHandleMessageSeasonRoute(t *testing.T) {
-	got := handleMessage(stubStatsProvider{}, stubSeasonProvider{days: 5}, stubStatusProvider{}, "/season")
+	got := handleMessage(stubStatsProvider{}, stubSeasonProvider{days: 5}, stubStatusProvider{}, nil, "/season")
 	want := "Season ends in 5 days."
 	if got != want {
 		t.Fatalf("handleMessage() = %q, want %q", got, want)
@@ -29,6 +29,7 @@ func TestHandleMessageStatusRoute(t *testing.T) {
 				},
 			},
 		},
+		nil,
 		"/status",
 	)
 
@@ -115,7 +116,7 @@ func TestNormalizeCommand(t *testing.T) {
 
 func TestHelpText(t *testing.T) {
 	got := helpText()
-	for _, want := range []string{"/players", "/season", "/status", "/stats", "/seasonstats", "/compare", "/seasoncompare"} {
+	for _, want := range []string{"/players", "/season", "/status", "/stats", "/seasonstats", "/compare", "/seasoncompare", "/session", "/sessions"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("helpText() missing %q", want)
 		}
@@ -540,7 +541,7 @@ func TestHandleMessageRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := handleMessage(provider, season, status, tt.text)
+			got := handleMessage(provider, season, status, nil, tt.text)
 			if tt.wantEmpty {
 				if got != "" {
 					t.Fatalf("got = %q, want empty", got)
