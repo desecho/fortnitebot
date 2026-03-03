@@ -104,7 +104,6 @@ func statusText(provider statusProvider) string {
 
 	lines := []string{
 		"Fortnite status",
-		fmt.Sprintf("Epic overall: %s", fallbackText(summary.Epic, "Unknown")),
 		fmt.Sprintf("Fortnite overall: %s", fallbackText(summary.Fortnite, "Unknown")),
 	}
 

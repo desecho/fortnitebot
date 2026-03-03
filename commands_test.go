@@ -35,7 +35,6 @@ func TestHandleMessageStatusRoute(t *testing.T) {
 
 	want := strings.Join([]string{
 		"Fortnite status",
-		"Epic overall: All Systems Operational",
 		"Fortnite overall: Operational",
 		"Services:",
 		"Game Services: Operational",
@@ -501,9 +500,6 @@ func TestStatusTextEdgeCases(t *testing.T) {
 				Services: []fortniteServiceStatus{{Name: "Login", Status: "OK"}},
 			},
 		})
-		if !strings.Contains(got, "Epic overall: Unknown") {
-			t.Fatalf("got = %q, want substring 'Epic overall: Unknown'", got)
-		}
 		if !strings.Contains(got, "Fortnite overall: Unknown") {
 			t.Fatalf("got = %q, want substring 'Fortnite overall: Unknown'", got)
 		}
