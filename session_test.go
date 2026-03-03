@@ -456,6 +456,64 @@ func TestCollectSnapshots(t *testing.T) {
 	}
 }
 
+func TestSnapshotText(t *testing.T) {
+	t.Run("nil store", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		got := snapshotText(provider, nil)
+		if got != "Session tracking is not configured." {
+			t.Fatalf("got = %q", got)
+		}
+	})
+
+	t.Run("no players", func(t *testing.T) {
+		got := snapshotText(stubStatsProvider{}, newStubSnapshotStore())
+		if got != "No players are configured." {
+			t.Fatalf("got = %q", got)
+		}
+	})
+
+	t.Run("successful collection", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		store := newStubSnapshotStore()
+
+		got := snapshotText(provider, store)
+		if !strings.Contains(got, "Collecting snapshots for") {
+			t.Fatalf("got = %q, want substring 'Collecting snapshots for'", got)
+		}
+		if !strings.Contains(got, "Alice: done") {
+			t.Fatalf("got = %q, want substring 'Alice: done'", got)
+		}
+		if !strings.Contains(got, "Bob: done") {
+			t.Fatalf("got = %q, want substring 'Bob: done'", got)
+		}
+		if len(store.upserted) != 2 {
+			t.Fatalf("upserted %d snapshots, want 2", len(store.upserted))
+		}
+	})
+
+	t.Run("fetch error", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		provider.fetchErr = fmt.Errorf("api down")
+		store := newStubSnapshotStore()
+
+		got := snapshotText(provider, store)
+		if !strings.Contains(got, "Alice: failed to fetch") {
+			t.Fatalf("got = %q, want substring 'Alice: failed to fetch'", got)
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		store := newStubSnapshotStore()
+		store.err = fmt.Errorf("db down")
+
+		got := snapshotText(provider, store)
+		if !strings.Contains(got, "Alice: failed to store") {
+			t.Fatalf("got = %q, want substring 'Alice: failed to store'", got)
+		}
+	})
+}
+
 func TestHandleMessageSessionRoutes(t *testing.T) {
 	provider := twoPlayerProvider()
 	season := stubSeasonProvider{days: 5}
@@ -474,6 +532,7 @@ func TestHandleMessageSessionRoutes(t *testing.T) {
 	}{
 		{"/session no store", "/session", "Session tracking is not configured."},
 		{"/sessions no store", "/sessions", "Session tracking is not configured."},
+		{"/snapshot no store", "/snapshot", "Session tracking is not configured."},
 	}
 
 	for _, tt := range tests {
@@ -496,6 +555,13 @@ func TestHandleMessageSessionRoutes(t *testing.T) {
 		got := handleMessage(provider, season, status, store, "/sessions Alice")
 		if !strings.Contains(got, "Alice") {
 			t.Fatalf("got = %q, want substring 'Alice'", got)
+		}
+	})
+
+	t.Run("/snapshot with store", func(t *testing.T) {
+		got := handleMessage(provider, season, status, store, "/snapshot")
+		if !strings.Contains(got, "Collecting snapshots for") {
+			t.Fatalf("got = %q, want substring 'Collecting snapshots for'", got)
 		}
 	})
 }

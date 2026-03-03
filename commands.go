@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 )
 
 func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, text string) string {
@@ -37,6 +38,8 @@ func handleMessage(provider statsProvider, season seasonProvider, status statusP
 		return sessionText(provider, store, args)
 	case "/sessions":
 		return sessionsText(provider, store, args)
+	case "/snapshot":
+		return snapshotText(provider, store)
 	default:
 		return "Unknown command. Use /help to see the available commands."
 	}
@@ -64,6 +67,7 @@ func helpText() string {
 		"/seasoncompare <player1> <player2> [player3 ...]",
 		"/session [player]",
 		"/sessions [player]",
+		"/snapshot",
 	}
 
 	lines = append(lines, "", "Use /players to see the configured player names.")
@@ -456,6 +460,42 @@ func formatSessionCompact(s sessionSummary) string {
 		"%s: %d matches, %d wins, %d kills, %.2f K/D, %.0f%% WR",
 		s.Date, s.Delta.Matches, s.Delta.Wins, s.Delta.Kills, s.KD, s.WinRate,
 	)
+}
+
+func snapshotText(provider statsProvider, store snapshotStore) string {
+	if store == nil {
+		return "Session tracking is not configured."
+	}
+	if provider.Count() == 0 {
+		return "No players are configured."
+	}
+	return collectSnapshotsReport(provider, store)
+}
+
+func collectSnapshotsReport(provider statsProvider, store snapshotStore) string {
+	today := time.Now().UTC().Format("2006-01-02")
+	lines := []string{fmt.Sprintf("Collecting snapshots for %s", today)}
+
+	for _, entry := range provider.Entries() {
+		snapshot, err := provider.Fetch(entry)
+		if err != nil {
+			lines = append(lines, fmt.Sprintf("%s: failed to fetch (%v)", entry.Name, err))
+			continue
+		}
+		daily := dailySnapshot{
+			AccountID: entry.AccountID,
+			Name:      entry.Name,
+			Date:      today,
+			Stats:     extractDailyStats(snapshot.stats),
+			CreatedAt: time.Now().UTC(),
+		}
+		if err := store.UpsertSnapshot(daily); err != nil {
+			lines = append(lines, fmt.Sprintf("%s: failed to store (%v)", entry.Name, err))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("%s: done", entry.Name))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func leaderLabel(players []playerSnapshot, valueFn func(statLine) float64, lowerIsBetter bool) string {
