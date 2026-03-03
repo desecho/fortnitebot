@@ -86,7 +86,7 @@ To add a friend, add another object with their player name and account ID.
 - The bot sends the `Authorization` header using `FORTNITE_API_TOKEN` when it calls the Fortnite API.
 - The bot sends the `x-api-key` header using `FORTNITE_API2_TOKEN` when it calls `https://prod.api-fortnite.com/api/v1/season`.
 - `/season` reads `seasonDateEnd` from that response and reports how many days are left in the current season.
-- `/status` reads `https://status.epicgames.com/api/v2/summary.json` and reports the Epic-wide summary, the overall Fortnite status, and each Fortnite service status.
+- `/status` reads `https://status.epicgames.com/api/v2/summary.json` and reports the overall Fortnite status and each Fortnite service status.
 - `/stats` fetches and lists `stats.all.overall` for every player in `players.json`, or only one player when called as `/stats <player>`.
 - `/seasonstats` fetches and lists `stats.all.overall` for every player in `players.json` using `?timeWindow=season`, or only one player when called as `/seasonstats <player>`.
 - `/compare` compares two or more players using `stats.all.overall`.
