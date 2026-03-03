@@ -36,6 +36,8 @@ func handleMessage(provider statsProvider, season seasonProvider, status statusP
 		return compareText(provider, args, true)
 	case "/session":
 		return sessionText(provider, store, args)
+	case "/sessioncurrent":
+		return sessionCurrentText(provider, store, args)
 	case "/sessions":
 		return sessionsText(provider, store, args)
 	case "/snapshot":
@@ -66,6 +68,7 @@ func helpText() string {
 		"/compare <player1> <player2> [player3 ...]",
 		"/seasoncompare <player1> <player2> [player3 ...]",
 		"/session [player]",
+		"/sessioncurrent [player]",
 		"/sessions [player]",
 		"",
 		"Use /players to see the configured player names.",
@@ -321,6 +324,62 @@ func formatPlayerSession(store snapshotStore, entry playerCatalogEntry) string {
 	session := detectSession(entry.Name, snapshots[0], snapshots[1])
 	if session == nil {
 		return fmt.Sprintf("%s\nNo recent gaming session detected.", entry.Name)
+	}
+
+	return formatSession(*session)
+}
+
+func sessionCurrentText(provider statsProvider, store snapshotStore, args []string) string {
+	if store == nil {
+		return "Session tracking is not configured."
+	}
+	if provider.Count() == 0 {
+		return "No players are configured."
+	}
+	if len(args) > 1 {
+		return "Usage: /sessioncurrent [player]"
+	}
+
+	if len(args) == 1 {
+		entry, ok := provider.Lookup(args[0])
+		if !ok {
+			return fmt.Sprintf("Unknown player %q. Use /players to see the configured player names.", args[0])
+		}
+		return formatPlayerSessionCurrent(provider, store, entry)
+	}
+
+	var results []string
+	for _, entry := range provider.Entries() {
+		results = append(results, formatPlayerSessionCurrent(provider, store, entry))
+	}
+	return strings.Join(results, "\n\n")
+}
+
+func formatPlayerSessionCurrent(provider statsProvider, store snapshotStore, entry playerCatalogEntry) string {
+	snapshots, err := store.RecentSnapshots(entry.AccountID, 1)
+	if err != nil {
+		return fmt.Sprintf("%s\nFailed to fetch session data: %v", entry.Name, err)
+	}
+	if len(snapshots) == 0 {
+		return fmt.Sprintf("%s\nNo snapshot data available.", entry.Name)
+	}
+
+	live, err := provider.FetchFresh(entry)
+	if err != nil {
+		return fmt.Sprintf("%s\nFailed to fetch live stats: %v", entry.Name, err)
+	}
+
+	liveSnapshot := dailySnapshot{
+		AccountID: entry.AccountID,
+		Name:      entry.Name,
+		Date:      time.Now().UTC().Format("2006-01-02"),
+		Stats:     extractDailyStats(live.stats),
+		CreatedAt: time.Now().UTC(),
+	}
+
+	session := detectSession(entry.Name, liveSnapshot, snapshots[0])
+	if session == nil {
+		return fmt.Sprintf("%s\nNo activity since last snapshot.", entry.Name)
 	}
 
 	return formatSession(*session)

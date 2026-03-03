@@ -115,7 +115,7 @@ func TestNormalizeCommand(t *testing.T) {
 
 func TestHelpText(t *testing.T) {
 	got := helpText()
-	for _, want := range []string{"/players", "/season", "/status", "/stats", "/seasonstats", "/compare", "/seasoncompare", "/session", "/sessions"} {
+	for _, want := range []string{"/players", "/season", "/status", "/stats", "/seasonstats", "/compare", "/seasoncompare", "/session", "/sessioncurrent", "/sessions"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("helpText() missing %q", want)
 		}

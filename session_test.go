@@ -532,6 +532,159 @@ func TestSnapshotText(t *testing.T) {
 	})
 }
 
+func TestSessionCurrentText(t *testing.T) {
+	t.Run("nil store", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		got := sessionCurrentText(provider, nil, nil)
+		if got != "Session tracking is not configured." {
+			t.Fatalf("got = %q", got)
+		}
+	})
+
+	t.Run("no players", func(t *testing.T) {
+		got := sessionCurrentText(stubStatsProvider{}, newStubSnapshotStore(), nil)
+		if got != "No players are configured." {
+			t.Fatalf("got = %q", got)
+		}
+	})
+
+	t.Run("too many args", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		got := sessionCurrentText(provider, newStubSnapshotStore(), []string{"a", "b"})
+		if got != "Usage: /sessioncurrent [player]" {
+			t.Fatalf("got = %q", got)
+		}
+	})
+
+	t.Run("unknown player", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		got := sessionCurrentText(provider, newStubSnapshotStore(), []string{"nobody"})
+		if !strings.Contains(got, "Unknown player") {
+			t.Fatalf("got = %q, want substring 'Unknown player'", got)
+		}
+	})
+
+	t.Run("no snapshots available", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		store := newStubSnapshotStore()
+
+		got := sessionCurrentText(provider, store, []string{"Alice"})
+		if !strings.Contains(got, "No snapshot data available") {
+			t.Fatalf("got = %q, want substring 'No snapshot data available'", got)
+		}
+	})
+
+	t.Run("session detected with live data", func(t *testing.T) {
+		provider := newTestStatsProvider(
+			testPlayer{
+				entry: aliceEntry,
+				snapshot: playerSnapshot{
+					entry: aliceEntry,
+					stats: statLine{Wins: 12, Kills: 60, Deaths: 22, Matches: 32, MinutesPlayed: 700},
+				},
+			},
+		)
+		store := newStubSnapshotStore()
+		store.snapshots["a1"] = []dailySnapshot{
+			{Date: "2026-03-02", Stats: dailyStatLine{Wins: 10, Kills: 50, Deaths: 20, Matches: 30, MinutesPlayed: 600}},
+		}
+
+		got := sessionCurrentText(provider, store, []string{"Alice"})
+		if !strings.Contains(got, "Matches: 2") {
+			t.Fatalf("got = %q, want substring 'Matches: 2'", got)
+		}
+		if !strings.Contains(got, "Wins: 2") {
+			t.Fatalf("got = %q, want substring 'Wins: 2'", got)
+		}
+		if !strings.Contains(got, "Kills: 10") {
+			t.Fatalf("got = %q, want substring 'Kills: 10'", got)
+		}
+		if provider.fetchFreshCount != 1 {
+			t.Fatalf("FetchFresh() calls = %d, want 1", provider.fetchFreshCount)
+		}
+	})
+
+	t.Run("no activity since snapshot", func(t *testing.T) {
+		provider := newTestStatsProvider(
+			testPlayer{
+				entry: aliceEntry,
+				snapshot: playerSnapshot{
+					entry: aliceEntry,
+					stats: statLine{Wins: 10, Kills: 50, Deaths: 20, Matches: 30},
+				},
+			},
+		)
+		store := newStubSnapshotStore()
+		store.snapshots["a1"] = []dailySnapshot{
+			{Date: "2026-03-02", Stats: dailyStatLine{Wins: 10, Kills: 50, Deaths: 20, Matches: 30}},
+		}
+
+		got := sessionCurrentText(provider, store, []string{"Alice"})
+		if !strings.Contains(got, "No activity since last snapshot") {
+			t.Fatalf("got = %q, want substring 'No activity since last snapshot'", got)
+		}
+	})
+
+	t.Run("store error", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		store := newStubSnapshotStore()
+		store.err = fmt.Errorf("db down")
+
+		got := sessionCurrentText(provider, store, []string{"Alice"})
+		if !strings.Contains(got, "Failed to fetch session data") {
+			t.Fatalf("got = %q, want substring 'Failed to fetch session data'", got)
+		}
+	})
+
+	t.Run("fetch fresh error", func(t *testing.T) {
+		provider := twoPlayerProvider()
+		provider.fetchFreshErr = fmt.Errorf("api down")
+		store := newStubSnapshotStore()
+		store.snapshots["a1"] = []dailySnapshot{
+			{Date: "2026-03-02", Stats: dailyStatLine{Matches: 30}},
+		}
+
+		got := sessionCurrentText(provider, store, []string{"Alice"})
+		if !strings.Contains(got, "Failed to fetch live stats") {
+			t.Fatalf("got = %q, want substring 'Failed to fetch live stats'", got)
+		}
+	})
+
+	t.Run("all players", func(t *testing.T) {
+		provider := newTestStatsProvider(
+			testPlayer{
+				entry: aliceEntry,
+				snapshot: playerSnapshot{
+					entry: aliceEntry,
+					stats: statLine{Wins: 12, Kills: 60, Deaths: 22, Matches: 32},
+				},
+			},
+			testPlayer{
+				entry: bobEntry,
+				snapshot: playerSnapshot{
+					entry: bobEntry,
+					stats: statLine{Wins: 5, Kills: 20, Deaths: 10, Matches: 15},
+				},
+			},
+		)
+		store := newStubSnapshotStore()
+		store.snapshots["a1"] = []dailySnapshot{
+			{Date: "2026-03-02", Stats: dailyStatLine{Wins: 10, Kills: 50, Deaths: 20, Matches: 30}},
+		}
+		store.snapshots["b2"] = []dailySnapshot{
+			{Date: "2026-03-02", Stats: dailyStatLine{Wins: 5, Kills: 20, Deaths: 10, Matches: 15}},
+		}
+
+		got := sessionCurrentText(provider, store, nil)
+		if !strings.Contains(got, "Alice") {
+			t.Fatalf("got = %q, want substring 'Alice'", got)
+		}
+		if !strings.Contains(got, "Bob") {
+			t.Fatalf("got = %q, want substring 'Bob'", got)
+		}
+	})
+}
+
 func TestHandleMessageSessionRoutes(t *testing.T) {
 	provider := twoPlayerProvider()
 	season := stubSeasonProvider{days: 5}
@@ -549,6 +702,7 @@ func TestHandleMessageSessionRoutes(t *testing.T) {
 		wantContains string
 	}{
 		{"/session no store", "/session", "Session tracking is not configured."},
+		{"/sessioncurrent no store", "/sessioncurrent", "Session tracking is not configured."},
 		{"/sessions no store", "/sessions", "Session tracking is not configured."},
 		{"/snapshot no store", "/snapshot", "Session tracking is not configured."},
 	}
