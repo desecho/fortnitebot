@@ -337,9 +337,6 @@ func daysLeftUntil(now, seasonDateEnd time.Time) int {
 	if remaining%(24*time.Hour) != 0 {
 		days++
 	}
-	if days < 1 {
-		return 1
-	}
 	return days
 }
 

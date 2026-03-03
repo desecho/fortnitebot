@@ -114,30 +114,7 @@ func startCron(provider statsProvider, store snapshotStore) {
 }
 
 func collectSnapshots(provider statsProvider, store snapshotStore) {
-	today := time.Now().UTC().Format("2006-01-02")
-	log.Printf("Collecting daily snapshots for %s", today)
-
-	for _, entry := range provider.Entries() {
-		snapshot, err := provider.FetchFresh(entry)
-		if err != nil {
-			log.Printf("Failed to fetch stats for %s: %v", entry.Name, err)
-			continue
-		}
-
-		daily := dailySnapshot{
-			AccountID: entry.AccountID,
-			Name:      entry.Name,
-			Date:      today,
-			Stats:     extractDailyStats(snapshot.stats),
-			CreatedAt: time.Now().UTC(),
-		}
-
-		if err := store.UpsertSnapshot(daily); err != nil {
-			log.Printf("Failed to store snapshot for %s: %v", entry.Name, err)
-			continue
-		}
-		log.Printf("Stored snapshot for %s on %s", entry.Name, today)
-	}
+	log.Print(collectSnapshotsReport(provider, store))
 }
 
 func runBot(client botClient, provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, pollTimeout int) error {

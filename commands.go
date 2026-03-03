@@ -54,7 +54,7 @@ func normalizeCommand(command string) string {
 }
 
 func helpText() string {
-	lines := []string{
+	return strings.Join([]string{
 		"Fortnite stats bot",
 		"",
 		"Commands:",
@@ -67,10 +67,9 @@ func helpText() string {
 		"/seasoncompare <player1> <player2> [player3 ...]",
 		"/session [player]",
 		"/sessions [player]",
-	}
-
-	lines = append(lines, "", "Use /players to see the configured player names.")
-	return strings.Join(lines, "\n")
+		"",
+		"Use /players to see the configured player names.",
+	}, "\n")
 }
 
 func playersText(provider statsProvider) string {
@@ -173,9 +172,6 @@ func fetchStatsBatch(provider statsProvider, entries []playerCatalogEntry, seaso
 	wg.Add(len(entries))
 
 	for i, entry := range entries {
-		i := i
-		entry := entry
-
 		go func() {
 			defer wg.Done()
 
@@ -261,7 +257,7 @@ func compareTitle(season bool) string {
 func formatStats(player playerSnapshot) string {
 	line := player.stats
 	lines := []string{
-		playerLabel(player),
+		player.entry.Name,
 		fmt.Sprintf("Wins: %d", line.Wins),
 		fmt.Sprintf("Kills: %d", line.Kills),
 		fmt.Sprintf("Kills/match: %.2f", line.KillsPerMatch),
@@ -285,10 +281,6 @@ func fallbackText(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func playerLabel(player playerSnapshot) string {
-	return player.entry.Name
 }
 
 func sessionText(provider statsProvider, store snapshotStore, args []string) string {
@@ -502,20 +494,20 @@ func leaderLabel(players []playerSnapshot, valueFn func(statLine) float64, lower
 	}
 
 	bestValue := valueFn(players[0].stats)
-	winners := []string{playerLabel(players[0])}
+	winners := []string{players[0].entry.Name}
 
 	for _, player := range players[1:] {
 		value := valueFn(player.stats)
 
 		switch {
 		case value == bestValue:
-			winners = append(winners, playerLabel(player))
+			winners = append(winners, player.entry.Name)
 		case lowerIsBetter && value < bestValue:
 			bestValue = value
-			winners = []string{playerLabel(player)}
+			winners = []string{player.entry.Name}
 		case !lowerIsBetter && value > bestValue:
 			bestValue = value
-			winners = []string{playerLabel(player)}
+			winners = []string{player.entry.Name}
 		}
 	}
 

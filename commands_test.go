@@ -227,13 +227,6 @@ func TestCompareTitle(t *testing.T) {
 	}
 }
 
-func TestPlayerLabel(t *testing.T) {
-	player := playerSnapshot{entry: playerCatalogEntry{Name: "TestPlayer"}}
-	if got := playerLabel(player); got != "TestPlayer" {
-		t.Fatalf("playerLabel() = %q, want TestPlayer", got)
-	}
-}
-
 func TestLeaderLabel(t *testing.T) {
 	winsFn := func(s statLine) float64 { return float64(s.Wins) }
 	deathsFn := func(s statLine) float64 { return float64(s.Deaths) }
