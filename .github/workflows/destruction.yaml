@@ -1,6 +1,8 @@
 ---
 name: Destruction
 on: workflow_dispatch
+env:
+  PROJECT: fortnitebot
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
 jobs:
@@ -30,3 +32,4 @@ jobs:
       - name: Destroy
         run: |
           kubectl delete -f deployment/deployment.yaml --ignore-not-found
+          kubectl delete secret "$PROJECT" --ignore-not-found
