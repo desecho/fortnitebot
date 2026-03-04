@@ -98,6 +98,13 @@ func seasonText(provider seasonProvider) string {
 	return fmt.Sprintf("Season ends in %d days.", daysLeft)
 }
 
+func statusEmoji(status string) string {
+	if status == "Operational" {
+		return "🟢"
+	}
+	return "🔴"
+}
+
 func statusText(provider statusProvider) string {
 	summary, err := provider.Summary()
 	if err != nil {
@@ -106,7 +113,7 @@ func statusText(provider statusProvider) string {
 
 	lines := []string{
 		"Fortnite status",
-		fmt.Sprintf("Fortnite overall: %s", fallbackText(summary.Fortnite, "Unknown")),
+		fmt.Sprintf("Fortnite overall: %s %s", fallbackText(summary.Fortnite, "Unknown"), statusEmoji(summary.Fortnite)),
 	}
 
 	if len(summary.Services) == 0 {
@@ -116,7 +123,7 @@ func statusText(provider statusProvider) string {
 
 	lines = append(lines, "Services:")
 	for _, service := range summary.Services {
-		lines = append(lines, fmt.Sprintf("%s: %s", fallbackText(service.Name, "Unknown"), fallbackText(service.Status, "Unknown")))
+		lines = append(lines, fmt.Sprintf("%s: %s %s", fallbackText(service.Name, "Unknown"), fallbackText(service.Status, "Unknown"), statusEmoji(service.Status)))
 	}
 
 	return strings.Join(lines, "\n")
@@ -261,14 +268,14 @@ func formatStats(player playerSnapshot) string {
 	line := player.stats
 	lines := []string{
 		player.entry.Name,
-		fmt.Sprintf("Wins: %d", line.Wins),
-		fmt.Sprintf("Kills: %d", line.Kills),
-		fmt.Sprintf("Kills/match: %.2f", line.KillsPerMatch),
-		fmt.Sprintf("Deaths: %d", line.Deaths),
-		fmt.Sprintf("K/D: %.2f", line.KD),
-		fmt.Sprintf("Matches: %d", line.Matches),
-		fmt.Sprintf("Win rate: %.2f%%", line.WinRate),
-		fmt.Sprintf("Hours played: %.2f", hoursPlayed(line.MinutesPlayed)),
+		fmt.Sprintf("🏆 Wins: %d", line.Wins),
+		fmt.Sprintf("💀 Kills: %d", line.Kills),
+		fmt.Sprintf("🎯 Kills/match: %.2f", line.KillsPerMatch),
+		fmt.Sprintf("☠️ Deaths: %d", line.Deaths),
+		fmt.Sprintf("⚔️ K/D: %.2f", line.KD),
+		fmt.Sprintf("🎮 Matches: %d", line.Matches),
+		fmt.Sprintf("📈 Win rate: %.2f%%", line.WinRate),
+		fmt.Sprintf("⏱️ Hours played: %.2f", hoursPlayed(line.MinutesPlayed)),
 	}
 
 	return strings.Join(lines, "\n")

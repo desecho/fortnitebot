@@ -35,10 +35,10 @@ func TestHandleMessageStatusRoute(t *testing.T) {
 
 	want := strings.Join([]string{
 		"Fortnite status",
-		"Fortnite overall: Operational",
+		"Fortnite overall: Operational 🟢",
 		"Services:",
-		"Game Services: Operational",
-		"Matchmaking: Operational",
+		"Game Services: Operational 🟢",
+		"Matchmaking: Operational 🟢",
 	}, "\n")
 
 	if got != want {
@@ -160,14 +160,14 @@ func TestFormatStats(t *testing.T) {
 	}
 
 	expectations := []string{
-		"Wins: 10",
-		"Kills: 50",
-		"Kills/match: 2.50",
-		"Deaths: 20",
-		"K/D: 2.50",
-		"Matches: 20",
-		"Win rate: 50.00%",
-		"Hours played: 10.00",
+		"🏆 Wins: 10",
+		"💀 Kills: 50",
+		"🎯 Kills/match: 2.50",
+		"☠️ Deaths: 20",
+		"⚔️ K/D: 2.50",
+		"🎮 Matches: 20",
+		"📈 Win rate: 50.00%",
+		"⏱️ Hours played: 10.00",
 	}
 
 	for _, expected := range expectations {
@@ -339,8 +339,8 @@ func TestStatsText(t *testing.T) {
 		if !strings.Contains(got, "Alice") {
 			t.Fatalf("got = %q, want substring 'Alice'", got)
 		}
-		if !strings.Contains(got, "Wins: 100") {
-			t.Fatalf("got = %q, want substring 'Wins: 100'", got)
+		if !strings.Contains(got, "🏆 Wins: 100") {
+			t.Fatalf("got = %q, want substring '🏆 Wins: 100'", got)
 		}
 	})
 
@@ -520,8 +520,8 @@ func TestHandleMessageRoutes(t *testing.T) {
 		{"/start", "/start", "Fortnite stats bot", false},
 		{"/help", "/help", "Fortnite stats bot", false},
 		{"/players", "/players", "Configured players:", false},
-		{"/stats single", "/stats Alice", "Wins: 100", false},
-		{"/seasonstats single", "/seasonstats Alice", "Wins: 100", false},
+		{"/stats single", "/stats Alice", "🏆 Wins: 100", false},
+		{"/seasonstats single", "/seasonstats Alice", "🏆 Wins: 100", false},
 		{"/compare", "/compare Alice Bob", "Compare (overall)", false},
 		{"/seasoncompare", "/seasoncompare Alice Bob", "Compare (season)", false},
 		{"command with @mention", "/help@MyBot", "Fortnite stats bot", false},
