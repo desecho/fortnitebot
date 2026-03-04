@@ -244,14 +244,14 @@ func compareText(provider statsProvider, args []string, season bool) string {
 	}
 
 	lines = append(lines,
-		fmt.Sprintf("Wins leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Wins) }, false)),
-		fmt.Sprintf("Kills leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Kills) }, false)),
-		fmt.Sprintf("Kills/match leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.KillsPerMatch }, false)),
-		fmt.Sprintf("Lower deaths: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Deaths) }, true)),
-		fmt.Sprintf("KD leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.KD }, false)),
-		fmt.Sprintf("Matches leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Matches) }, false)),
-		fmt.Sprintf("Win rate leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.WinRate }, false)),
-		fmt.Sprintf("Hours played leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.MinutesPlayed) }, false)),
+		fmt.Sprintf("🏆 Wins leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Wins) }, false)),
+		fmt.Sprintf("💀 Kills leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Kills) }, false)),
+		fmt.Sprintf("🎯 Kills/match leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.KillsPerMatch }, false)),
+		fmt.Sprintf("☠️ Lower deaths: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Deaths) }, true)),
+		fmt.Sprintf("⚔️ KD leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.KD }, false)),
+		fmt.Sprintf("🎮 Matches leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.Matches) }, false)),
+		fmt.Sprintf("📈 Win rate leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return line.WinRate }, false)),
+		fmt.Sprintf("⏱️ Hours played leader: %s", leaderLabel(snapshots, func(line statLine) float64 { return float64(line.MinutesPlayed) }, false)),
 	)
 
 	return strings.Join(lines, "\n")

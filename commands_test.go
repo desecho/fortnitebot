@@ -434,11 +434,11 @@ func TestCompareText(t *testing.T) {
 		if !strings.Contains(got, "Compare (overall)") {
 			t.Fatalf("got = %q, want substring 'Compare (overall)'", got)
 		}
-		if !strings.Contains(got, "Wins leader: Alice") {
-			t.Fatalf("got = %q, want substring 'Wins leader: Alice'", got)
+		if !strings.Contains(got, "🏆 Wins leader: Alice") {
+			t.Fatalf("got = %q, want substring '🏆 Wins leader: Alice'", got)
 		}
-		if !strings.Contains(got, "Kills leader: Bob") {
-			t.Fatalf("got = %q, want substring 'Kills leader: Bob'", got)
+		if !strings.Contains(got, "💀 Kills leader: Bob") {
+			t.Fatalf("got = %q, want substring '💀 Kills leader: Bob'", got)
 		}
 	})
 
