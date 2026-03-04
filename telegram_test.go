@@ -25,6 +25,10 @@ type sentMessage struct {
 	text   string
 }
 
+func (f *fakeBotClient) botUserID() int64 {
+	return 999
+}
+
 func newFakeBotClient(batches ...[]tgbotapi.Update) *fakeBotClient {
 	return &fakeBotClient{
 		batches: batches,

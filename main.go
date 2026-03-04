@@ -137,6 +137,10 @@ func runBot(client botClient, provider statsProvider, season seasonProvider, sta
 				continue
 			}
 
+			if msg.ReplyToMessage != nil && msg.ReplyToMessage.From != nil && msg.ReplyToMessage.From.ID == client.botUserID() {
+				continue
+			}
+
 			response := handleMessage(provider, season, status, store, msg.Text)
 			if strings.TrimSpace(response) == "" {
 				continue

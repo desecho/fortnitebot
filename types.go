@@ -59,6 +59,7 @@ type statusProvider interface {
 type botClient interface {
 	getUpdates(offset int, timeoutSecs int) ([]tgbotapi.Update, error)
 	sendMessage(chatID int64, text string) error
+	botUserID() int64
 }
 
 type fortniteAPIStatsProvider struct {

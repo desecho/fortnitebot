@@ -22,6 +22,10 @@ func (c *telegramBotClient) getUpdates(offset int, timeoutSecs int) ([]tgbotapi.
 	return c.api.GetUpdates(cfg)
 }
 
+func (c *telegramBotClient) botUserID() int64 {
+	return c.api.Self.ID
+}
+
 func (c *telegramBotClient) sendMessage(chatID int64, text string) error {
 	msg := tgbotapi.NewMessage(chatID, text)
 	_, err := c.api.Send(msg)
