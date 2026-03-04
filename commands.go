@@ -513,8 +513,8 @@ func formatSession(s sessionSummary) string {
 
 func formatSessionCompact(s sessionSummary) string {
 	return fmt.Sprintf(
-		"%s: %d matches, %d wins, %d kills, %.2f K/D, %.0f%% WR",
-		s.Date, s.Delta.Matches, s.Delta.Wins, s.Delta.Kills, s.KD, s.WinRate,
+		"%s: 🎮 %d matches, 🏆 %d wins, 💀 %d kills, 🎯 %.2f K/M, ☠️ %d deaths, ⚔️ %.2f K/D, 📈 %.0f%% WR, ⏱️ %.1fh",
+		s.Date, s.Delta.Matches, s.Delta.Wins, s.Delta.Kills, s.KillsPerMatch, s.Delta.Deaths, s.KD, s.WinRate, float64(s.Delta.MinutesPlayed)/60,
 	)
 }
 
