@@ -154,7 +154,7 @@ func TestFormatSession(t *testing.T) {
 		"Top 10: 7",
 		"Top 12: 8",
 		"Top 25: 9",
-		"Time played: 2.0h",
+		"Time played: 2h",
 	}
 
 	for _, expected := range expectations {

@@ -317,6 +317,18 @@ func hoursPlayed(minutes int64) float64 {
 	return float64(minutes) / 60
 }
 
+func formatMinutesPlayed(minutes int64) string {
+	h := minutes / 60
+	m := minutes % 60
+	if h == 0 {
+		return fmt.Sprintf("%dmin", m)
+	}
+	if m == 0 {
+		return fmt.Sprintf("%dh", h)
+	}
+	return fmt.Sprintf("%dh %dmin", h, m)
+}
+
 func fallbackText(value, fallback string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -538,15 +550,15 @@ func formatSession(s sessionSummary) string {
 		fmt.Sprintf("🔟 Top 10: %d", s.Delta.Top10),
 		fmt.Sprintf("1️⃣2️⃣ Top 12: %d", s.Delta.Top12),
 		fmt.Sprintf("2️⃣5️⃣ Top 25: %d", s.Delta.Top25),
-		fmt.Sprintf("⏱️ Time played: %.1fh", float64(s.Delta.MinutesPlayed)/60),
+		fmt.Sprintf("⏱️ Time played: %s", formatMinutesPlayed(s.Delta.MinutesPlayed)),
 	}
 	return strings.Join(lines, "\n")
 }
 
 func formatSessionCompact(s sessionSummary) string {
 	return fmt.Sprintf(
-		"%s: 🎮 %d matches, 🏆 %d wins, 💀 %d kills, 🎯 %.2f K/M, ☠️ %d deaths, ⚔️ %.2f K/D, 📈 %.0f%% WR, ⏱️ %.1fh",
-		s.Date, s.Delta.Matches, s.Delta.Wins, s.Delta.Kills, s.KillsPerMatch, s.Delta.Deaths, s.KD, s.WinRate, float64(s.Delta.MinutesPlayed)/60,
+		"%s: 🎮 %d matches, 🏆 %d wins, 💀 %d kills, 🎯 %.2f K/M, ☠️ %d deaths, ⚔️ %.2f K/D, 📈 %.0f%% WR, ⏱️ %s",
+		s.Date, s.Delta.Matches, s.Delta.Wins, s.Delta.Kills, s.KillsPerMatch, s.Delta.Deaths, s.KD, s.WinRate, formatMinutesPlayed(s.Delta.MinutesPlayed),
 	)
 }
 
