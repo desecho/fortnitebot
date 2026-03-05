@@ -105,6 +105,13 @@ func statusEmoji(status string) string {
 	return "🔴"
 }
 
+func statusLabel(status string) string {
+	if status == "Operational" {
+		return "🟢"
+	}
+	return fallbackText(status, "Unknown") + " 🔴"
+}
+
 func serviceEmoji(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "website":
@@ -137,8 +144,8 @@ func statusText(provider statusProvider) string {
 	}
 
 	lines := []string{
-		"🎮 Fortnite status",
-		fmt.Sprintf("%s Fortnite overall: %s", statusEmoji(summary.Fortnite), fallbackText(summary.Fortnite, "Unknown")),
+		"Fortnite status",
+		fmt.Sprintf("🎮 Fortnite overall: %s", statusLabel(summary.Fortnite)),
 	}
 
 	if len(summary.Services) == 0 {
@@ -148,7 +155,7 @@ func statusText(provider statusProvider) string {
 
 	lines = append(lines, "", "🧩 Services:")
 	for _, service := range summary.Services {
-		lines = append(lines, fmt.Sprintf("%s %s: %s %s", serviceEmoji(service.Name), fallbackText(service.Name, "Unknown"), fallbackText(service.Status, "Unknown"), statusEmoji(service.Status)))
+		lines = append(lines, fmt.Sprintf("%s %s: %s", serviceEmoji(service.Name), fallbackText(service.Name, "Unknown"), statusLabel(service.Status)))
 	}
 
 	return strings.Join(lines, "\n")
