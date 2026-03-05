@@ -105,6 +105,31 @@ func statusEmoji(status string) string {
 	return "🔴"
 }
 
+func serviceEmoji(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "website":
+		return "🌐"
+	case "game services":
+		return "🎯"
+	case "login":
+		return "🔑"
+	case "parties, friends, and messaging":
+		return "👥"
+	case "voice chat":
+		return "🎤"
+	case "matchmaking":
+		return "🕹️"
+	case "stats and leaderboards":
+		return "📊"
+	case "item shop":
+		return "🛒"
+	case "fortnite crew":
+		return "⭐"
+	default:
+		return "🔹"
+	}
+}
+
 func statusText(provider statusProvider) string {
 	summary, err := provider.Summary()
 	if err != nil {
@@ -112,8 +137,8 @@ func statusText(provider statusProvider) string {
 	}
 
 	lines := []string{
-		"Fortnite status",
-		fmt.Sprintf("Fortnite overall: %s %s", fallbackText(summary.Fortnite, "Unknown"), statusEmoji(summary.Fortnite)),
+		"🎮 Fortnite status",
+		fmt.Sprintf("%s Fortnite overall: %s", statusEmoji(summary.Fortnite), fallbackText(summary.Fortnite, "Unknown")),
 	}
 
 	if len(summary.Services) == 0 {
@@ -121,9 +146,9 @@ func statusText(provider statusProvider) string {
 		return strings.Join(lines, "\n")
 	}
 
-	lines = append(lines, "Services:")
+	lines = append(lines, "", "🧩 Services:")
 	for _, service := range summary.Services {
-		lines = append(lines, fmt.Sprintf("%s: %s %s", fallbackText(service.Name, "Unknown"), fallbackText(service.Status, "Unknown"), statusEmoji(service.Status)))
+		lines = append(lines, fmt.Sprintf("%s %s: %s %s", serviceEmoji(service.Name), fallbackText(service.Name, "Unknown"), fallbackText(service.Status, "Unknown"), statusEmoji(service.Status)))
 	}
 
 	return strings.Join(lines, "\n")
