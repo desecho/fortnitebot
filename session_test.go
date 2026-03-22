@@ -140,7 +140,7 @@ func TestFormatSession(t *testing.T) {
 	got := formatSession(s)
 
 	expectations := []string{
-		"Alice - Session 2026-03-03",
+		"<b>Alice</b> - Session 2026-03-03",
 		"Matches: 10",
 		"Wins: 3",
 		"Kills: 25",
@@ -486,11 +486,11 @@ func TestSnapshotText(t *testing.T) {
 		if !strings.Contains(got, "Collecting snapshots for") {
 			t.Fatalf("got = %q, want substring 'Collecting snapshots for'", got)
 		}
-		if !strings.Contains(got, "Alice: done") {
-			t.Fatalf("got = %q, want substring 'Alice: done'", got)
+		if !strings.Contains(got, "<b>Alice</b>: done") {
+			t.Fatalf("got = %q, want substring '<b>Alice</b>: done'", got)
 		}
-		if !strings.Contains(got, "Bob: done") {
-			t.Fatalf("got = %q, want substring 'Bob: done'", got)
+		if !strings.Contains(got, "<b>Bob</b>: done") {
+			t.Fatalf("got = %q, want substring '<b>Bob</b>: done'", got)
 		}
 		if len(store.upserted) != 2 {
 			t.Fatalf("upserted %d snapshots, want 2", len(store.upserted))
@@ -509,8 +509,8 @@ func TestSnapshotText(t *testing.T) {
 		store := newStubSnapshotStore()
 
 		got := snapshotText(provider, store)
-		if !strings.Contains(got, "Alice: failed to fetch") {
-			t.Fatalf("got = %q, want substring 'Alice: failed to fetch'", got)
+		if !strings.Contains(got, "<b>Alice</b>: failed to fetch") {
+			t.Fatalf("got = %q, want substring '<b>Alice</b>: failed to fetch'", got)
 		}
 		if provider.fetchCount != 0 {
 			t.Fatalf("Fetch() calls = %d, want 0", provider.fetchCount)
@@ -526,8 +526,8 @@ func TestSnapshotText(t *testing.T) {
 		store.err = fmt.Errorf("db down")
 
 		got := snapshotText(provider, store)
-		if !strings.Contains(got, "Alice: failed to store") {
-			t.Fatalf("got = %q, want substring 'Alice: failed to store'", got)
+		if !strings.Contains(got, "<b>Alice</b>: failed to store") {
+			t.Fatalf("got = %q, want substring '<b>Alice</b>: failed to store'", got)
 		}
 	})
 }

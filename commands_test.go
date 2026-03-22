@@ -139,7 +139,7 @@ func TestPlayersText(t *testing.T) {
 			testPlayer{entry: bobEntry, snapshot: bobSnapshot},
 		)
 		got := playersText(provider)
-		want := "Configured players:\nAlice\nBob"
+		want := "Configured players:\n<b>Alice</b>\n<b>Bob</b>"
 		if got != want {
 			t.Fatalf("playersText() = %q, want %q", got, want)
 		}
@@ -157,8 +157,8 @@ func TestFormatStats(t *testing.T) {
 
 	got := formatStats(player)
 	lines := strings.Split(got, "\n")
-	if lines[0] != "TestPlayer" {
-		t.Fatalf("first line = %q, want TestPlayer", lines[0])
+	if lines[0] != "<b>TestPlayer</b>" {
+		t.Fatalf("first line = %q, want <b>TestPlayer</b>", lines[0])
 	}
 
 	expectations := []string{
@@ -250,26 +250,26 @@ func TestLeaderLabel(t *testing.T) {
 			name:    "single player",
 			players: []playerSnapshot{aliceSnapshot},
 			valueFn: winsFn,
-			want:    "Alice",
+			want:    "<b>Alice</b>",
 		},
 		{
 			name:    "clear winner higher is better",
 			players: []playerSnapshot{aliceSnapshot, bobSnapshot},
 			valueFn: winsFn,
-			want:    "Alice",
+			want:    "<b>Alice</b>",
 		},
 		{
 			name:          "clear winner lower is better",
 			players:       []playerSnapshot{aliceSnapshot, bobSnapshot},
 			valueFn:       deathsFn,
 			lowerIsBetter: true,
-			want:          "Bob",
+			want:          "<b>Bob</b>",
 		},
 		{
 			name:    "tie between two",
 			players: []playerSnapshot{aliceSnapshot, charlieSnapshot},
 			valueFn: winsFn,
-			want:    "Tie (Alice / Charlie)",
+			want:    "Tie (<b>Alice</b> / <b>Charlie</b>)",
 		},
 		{
 			name: "tie among three",
@@ -279,14 +279,14 @@ func TestLeaderLabel(t *testing.T) {
 				charlieSnapshot,
 			},
 			valueFn: winsFn,
-			want:    "Tie (Alice / Charlie / Dan)",
+			want:    "Tie (<b>Alice</b> / <b>Charlie</b> / <b>Dan</b>)",
 		},
 		{
 			name:          "tie lower is better",
 			players:       []playerSnapshot{aliceSnapshot, charlieSnapshot},
 			valueFn:       deathsFn,
 			lowerIsBetter: true,
-			want:          "Tie (Alice / Charlie)",
+			want:          "Tie (<b>Alice</b> / <b>Charlie</b>)",
 		},
 	}
 
@@ -436,11 +436,11 @@ func TestCompareText(t *testing.T) {
 		if !strings.Contains(got, "Compare (overall)") {
 			t.Fatalf("got = %q, want substring 'Compare (overall)'", got)
 		}
-		if !strings.Contains(got, "🏆 Wins leader: Alice") {
-			t.Fatalf("got = %q, want substring '🏆 Wins leader: Alice'", got)
+		if !strings.Contains(got, "🏆 Wins leader: <b>Alice</b>") {
+			t.Fatalf("got = %q, want substring '🏆 Wins leader: <b>Alice</b>'", got)
 		}
-		if !strings.Contains(got, "💀 Kills leader: Bob") {
-			t.Fatalf("got = %q, want substring '💀 Kills leader: Bob'", got)
+		if !strings.Contains(got, "💀 Kills leader: <b>Bob</b>") {
+			t.Fatalf("got = %q, want substring '💀 Kills leader: <b>Bob</b>'", got)
 		}
 	})
 
@@ -458,8 +458,8 @@ func TestCompareText(t *testing.T) {
 		if !strings.Contains(got, "Compare (overall)") {
 			t.Fatalf("got = %q, want substring 'Compare (overall)'", got)
 		}
-		if !strings.Contains(got, "Tie (Alice / Charlie)") {
-			t.Fatalf("got = %q, want substring 'Tie (Alice / Charlie)' for wins tie", got)
+		if !strings.Contains(got, "Tie (<b>Alice</b> / <b>Charlie</b>)") {
+			t.Fatalf("got = %q, want substring 'Tie (<b>Alice</b> / <b>Charlie</b>)' for wins tie", got)
 		}
 	})
 
@@ -550,8 +550,10 @@ func TestHandleMessageRoutes(t *testing.T) {
 }
 
 func TestAiRankText(t *testing.T) {
+	provider := twoPlayerProvider()
+
 	t.Run("nil ranker", func(t *testing.T) {
-		got := aiRankText(nil, "some stats")
+		got := aiRankText(nil, provider, "some stats")
 		want := "AI ranking is not configured."
 		if got != want {
 			t.Fatalf("got = %q, want %q", got, want)
@@ -560,16 +562,16 @@ func TestAiRankText(t *testing.T) {
 
 	t.Run("empty stats", func(t *testing.T) {
 		ranker := stubRankingProvider{response: "ranked"}
-		got := aiRankText(ranker, "")
+		got := aiRankText(ranker, provider, "")
 		if got != "" {
 			t.Fatalf("got = %q, want empty", got)
 		}
 	})
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success with bold names", func(t *testing.T) {
 		ranker := stubRankingProvider{response: "1. Alice\n2. Bob"}
-		got := aiRankText(ranker, "some stats")
-		want := "1. Alice\n2. Bob"
+		got := aiRankText(ranker, provider, "some stats")
+		want := "1. <b>Alice</b>\n2. <b>Bob</b>"
 		if got != want {
 			t.Fatalf("got = %q, want %q", got, want)
 		}
@@ -577,7 +579,7 @@ func TestAiRankText(t *testing.T) {
 
 	t.Run("error", func(t *testing.T) {
 		ranker := stubRankingProvider{err: errors.New("api error")}
-		got := aiRankText(ranker, "some stats")
+		got := aiRankText(ranker, provider, "some stats")
 		want := "Failed to generate AI ranking: api error"
 		if got != want {
 			t.Fatalf("got = %q, want %q", got, want)
@@ -596,8 +598,8 @@ func TestHandleMessageAiRoutes(t *testing.T) {
 		text         string
 		wantContains string
 	}{
-		{"/stats_ai", "/stats_ai", "1. Alice"},
-		{"/seasonstats_ai", "/seasonstats_ai", "1. Alice"},
+		{"/stats_ai", "/stats_ai", "1. <b>Alice</b>"},
+		{"/seasonstats_ai", "/seasonstats_ai", "1. <b>Alice</b>"},
 	}
 
 	for _, tt := range tests {

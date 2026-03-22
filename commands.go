@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"html"
 	"slices"
 	"strings"
 	"sync"
@@ -9,6 +10,10 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+func boldName(name string) string {
+	return "<b>" + html.EscapeString(name) + "</b>"
+}
 
 func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, ranker rankingProvider, text string) string {
 	fields := strings.Fields(strings.TrimSpace(text))
@@ -48,22 +53,22 @@ func handleMessage(provider statsProvider, season seasonProvider, status statusP
 		if aiRateLimited() {
 			return "Try again later."
 		}
-		return aiRankText(ranker, statsText(provider, nil, false))
+		return aiRankText(ranker, provider, statsText(provider, nil, false))
 	case "/seasonstats_ai":
 		if aiRateLimited() {
 			return "Try again later."
 		}
-		return aiRankText(ranker, statsText(provider, nil, true))
+		return aiRankText(ranker, provider, statsText(provider, nil, true))
 	case "/session_ai":
 		if aiRateLimited() {
 			return "Try again later."
 		}
-		return aiRankText(ranker, sessionText(provider, store, nil))
+		return aiRankText(ranker, provider, sessionText(provider, store, nil))
 	case "/sessioncurrent_ai":
 		if aiRateLimited() {
 			return "Try again later."
 		}
-		return aiRankText(ranker, sessionCurrentText(provider, store, nil))
+		return aiRankText(ranker, provider, sessionCurrentText(provider, store, nil))
 	default:
 		return "Unknown command. Use /help to see the available commands."
 	}
@@ -130,8 +135,8 @@ func helpText() string {
 		"/status",
 		"/stats [player]",
 		"/seasonstats [player]",
-		"/compare <player1> <player2> [player3 ...]",
-		"/seasoncompare <player1> <player2> [player3 ...]",
+		"/compare &lt;player1&gt; &lt;player2&gt; [player3 ...]",
+		"/seasoncompare &lt;player1&gt; &lt;player2&gt; [player3 ...]",
 		"/session [player]",
 		"/sessioncurrent [player]",
 		"/sessions [player]",
@@ -144,7 +149,7 @@ func helpText() string {
 	}, "\n")
 }
 
-func aiRankText(ranker rankingProvider, statsOutput string) string {
+func aiRankText(ranker rankingProvider, provider statsProvider, statsOutput string) string {
 	if ranker == nil {
 		return "AI ranking is not configured."
 	}
@@ -158,7 +163,35 @@ func aiRankText(ranker rankingProvider, statsOutput string) string {
 	if err != nil {
 		return fmt.Sprintf("Failed to generate AI ranking: %v", err)
 	}
-	return ranked
+	return boldPlayerNames(ranked, provider.Names())
+}
+
+func boldPlayerNames(text string, names []string) string {
+	for _, name := range names {
+		escaped := html.EscapeString(name)
+		bold := boldName(name)
+		// Replace already-bolded occurrences first to avoid double-bolding
+		text = strings.ReplaceAll(text, bold, "\x00"+name+"\x00")
+		// Case-insensitive replace of plain name
+		lower := strings.ToLower(text)
+		lowerName := strings.ToLower(escaped)
+		var result strings.Builder
+		i := 0
+		for {
+			idx := strings.Index(lower[i:], lowerName)
+			if idx < 0 {
+				result.WriteString(text[i:])
+				break
+			}
+			result.WriteString(text[i : i+idx])
+			result.WriteString(bold)
+			i += idx + len(escaped)
+		}
+		text = result.String()
+		// Restore previously-bolded occurrences
+		text = strings.ReplaceAll(text, "\x00"+name+"\x00", bold)
+	}
+	return text
 }
 
 func playersText(provider statsProvider) string {
@@ -167,7 +200,11 @@ func playersText(provider statsProvider) string {
 		return "No players are configured."
 	}
 
-	return "Configured players:\n" + strings.Join(names, "\n")
+	bold := make([]string, len(names))
+	for i, name := range names {
+		bold[i] = boldName(name)
+	}
+	return "Configured players:\n" + strings.Join(bold, "\n")
 }
 
 func seasonText(provider seasonProvider) string {
@@ -266,7 +303,7 @@ func statsText(provider statsProvider, args []string, season bool) string {
 
 		player, err := fetchStats(provider, entry, season)
 		if err != nil {
-			return fmt.Sprintf("Failed to fetch stats for %s: %v", entry.Name, err)
+			return fmt.Sprintf("Failed to fetch stats for %s: %v", boldName(entry.Name), err)
 		}
 
 		return formatStats(player)
@@ -277,7 +314,7 @@ func statsText(provider statsProvider, args []string, season bool) string {
 	snapshots := make([]string, 0, len(results))
 	for _, result := range results {
 		if result.err != nil {
-			snapshots = append(snapshots, fmt.Sprintf("%s\nFailed to fetch stats: %v", result.entry.Name, result.err))
+			snapshots = append(snapshots, fmt.Sprintf("%s\nFailed to fetch stats: %v", boldName(result.entry.Name), result.err))
 			continue
 		}
 		snapshots = append(snapshots, formatStats(result.snapshot))
@@ -325,9 +362,9 @@ func compareText(provider statsProvider, args []string, season bool) string {
 	}
 	if len(args) < 2 {
 		if season {
-			return "Usage: /seasoncompare <player1> <player2> [player3 ...]"
+			return "Usage: /seasoncompare &lt;player1&gt; &lt;player2&gt; [player3 ...]"
 		}
-		return "Usage: /compare <player1> <player2> [player3 ...]"
+		return "Usage: /compare &lt;player1&gt; &lt;player2&gt; [player3 ...]"
 	}
 
 	seen := make(map[string]struct{}, len(args))
@@ -350,7 +387,7 @@ func compareText(provider statsProvider, args []string, season bool) string {
 	results := fetchStatsBatch(provider, players, season)
 	for i, result := range results {
 		if result.err != nil {
-			return fmt.Sprintf("Failed to fetch compare stats for %s: %v", players[i].Name, result.err)
+			return fmt.Sprintf("Failed to fetch compare stats for %s: %v", boldName(players[i].Name), result.err)
 		}
 	}
 
@@ -385,7 +422,7 @@ func compareTitle(season bool) string {
 func formatStats(player playerSnapshot) string {
 	line := player.stats
 	lines := []string{
-		player.entry.Name,
+		boldName(player.entry.Name),
 		fmt.Sprintf("🏆 Wins: %d", line.Wins),
 		fmt.Sprintf("💀 Kills: %d", line.Kills),
 		fmt.Sprintf("🎯 Kills/match: %.2f", line.KillsPerMatch),
@@ -452,15 +489,15 @@ func sessionText(provider statsProvider, store snapshotStore, args []string) str
 func formatPlayerSession(store snapshotStore, entry playerCatalogEntry) string {
 	snapshots, err := store.RecentSnapshots(entry.AccountID, 2)
 	if err != nil {
-		return fmt.Sprintf("%s\nFailed to fetch session data: %v", entry.Name, err)
+		return fmt.Sprintf("%s\nFailed to fetch session data: %v", boldName(entry.Name), err)
 	}
 	if len(snapshots) < 2 {
-		return fmt.Sprintf("%s\nNot enough data to detect a session yet.", entry.Name)
+		return fmt.Sprintf("%s\nNot enough data to detect a session yet.", boldName(entry.Name))
 	}
 
 	session := detectSession(entry.Name, snapshots[0], snapshots[1])
 	if session == nil {
-		return fmt.Sprintf("%s\nNo recent gaming session detected.", entry.Name)
+		return fmt.Sprintf("%s\nNo recent gaming session detected.", boldName(entry.Name))
 	}
 
 	return formatSession(*session)
@@ -495,15 +532,15 @@ func sessionCurrentText(provider statsProvider, store snapshotStore, args []stri
 func formatPlayerSessionCurrent(provider statsProvider, store snapshotStore, entry playerCatalogEntry) string {
 	snapshots, err := store.RecentSnapshots(entry.AccountID, 1)
 	if err != nil {
-		return fmt.Sprintf("%s\nFailed to fetch session data: %v", entry.Name, err)
+		return fmt.Sprintf("%s\nFailed to fetch session data: %v", boldName(entry.Name), err)
 	}
 	if len(snapshots) == 0 {
-		return fmt.Sprintf("%s\nNo snapshot data available.", entry.Name)
+		return fmt.Sprintf("%s\nNo snapshot data available.", boldName(entry.Name))
 	}
 
 	live, err := provider.FetchFresh(entry)
 	if err != nil {
-		return fmt.Sprintf("%s\nFailed to fetch live stats: %v", entry.Name, err)
+		return fmt.Sprintf("%s\nFailed to fetch live stats: %v", boldName(entry.Name), err)
 	}
 
 	liveSnapshot := dailySnapshot{
@@ -516,7 +553,7 @@ func formatPlayerSessionCurrent(provider statsProvider, store snapshotStore, ent
 
 	session := detectSession(entry.Name, liveSnapshot, snapshots[0])
 	if session == nil {
-		return fmt.Sprintf("%s\nNo activity since last snapshot.", entry.Name)
+		return fmt.Sprintf("%s\nNo activity since last snapshot.", boldName(entry.Name))
 	}
 
 	return formatSession(*session)
@@ -551,10 +588,10 @@ func sessionsText(provider statsProvider, store snapshotStore, args []string) st
 func formatPlayerSessions(store snapshotStore, entry playerCatalogEntry) string {
 	snapshots, err := store.RecentSnapshots(entry.AccountID, 8)
 	if err != nil {
-		return fmt.Sprintf("%s\nFailed to fetch session data: %v", entry.Name, err)
+		return fmt.Sprintf("%s\nFailed to fetch session data: %v", boldName(entry.Name), err)
 	}
 	if len(snapshots) < 2 {
-		return fmt.Sprintf("%s\nNot enough data to detect sessions yet.", entry.Name)
+		return fmt.Sprintf("%s\nNot enough data to detect sessions yet.", boldName(entry.Name))
 	}
 
 	var sessions []sessionSummary
@@ -566,10 +603,10 @@ func formatPlayerSessions(store snapshotStore, entry playerCatalogEntry) string 
 	}
 
 	if len(sessions) == 0 {
-		return fmt.Sprintf("%s\nNo recent gaming sessions detected.", entry.Name)
+		return fmt.Sprintf("%s\nNo recent gaming sessions detected.", boldName(entry.Name))
 	}
 
-	lines := []string{fmt.Sprintf("%s - Recent sessions", entry.Name)}
+	lines := []string{fmt.Sprintf("%s - Recent sessions", boldName(entry.Name))}
 	for _, s := range sessions {
 		lines = append(lines, formatSessionCompact(s))
 	}
@@ -622,7 +659,7 @@ func detectSession(playerName string, newer, older dailySnapshot) *sessionSummar
 
 func formatSession(s sessionSummary) string {
 	lines := []string{
-		fmt.Sprintf("%s - Session %s", s.PlayerName, s.Date),
+		fmt.Sprintf("%s - Session %s", boldName(s.PlayerName), s.Date),
 		fmt.Sprintf("🎮 Matches: %d", s.Delta.Matches),
 		fmt.Sprintf("🏆 Wins: %d", s.Delta.Wins),
 		fmt.Sprintf("💀 Kills: %d", s.Delta.Kills),
@@ -665,7 +702,7 @@ func collectSnapshotsReport(provider statsProvider, store snapshotStore) string 
 	for _, entry := range provider.Entries() {
 		snapshot, err := provider.FetchFresh(entry)
 		if err != nil {
-			lines = append(lines, fmt.Sprintf("%s: failed to fetch (%v)", entry.Name, err))
+			lines = append(lines, fmt.Sprintf("%s: failed to fetch (%v)", boldName(entry.Name), err))
 			continue
 		}
 		daily := dailySnapshot{
@@ -676,10 +713,10 @@ func collectSnapshotsReport(provider statsProvider, store snapshotStore) string 
 			CreatedAt: time.Now().UTC(),
 		}
 		if err := store.UpsertSnapshot(daily); err != nil {
-			lines = append(lines, fmt.Sprintf("%s: failed to store (%v)", entry.Name, err))
+			lines = append(lines, fmt.Sprintf("%s: failed to store (%v)", boldName(entry.Name), err))
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%s: done", entry.Name))
+		lines = append(lines, fmt.Sprintf("%s: done", boldName(entry.Name)))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -690,20 +727,20 @@ func leaderLabel(players []playerSnapshot, valueFn func(statLine) float64, lower
 	}
 
 	bestValue := valueFn(players[0].stats)
-	winners := []string{players[0].entry.Name}
+	winners := []string{boldName(players[0].entry.Name)}
 
 	for _, player := range players[1:] {
 		value := valueFn(player.stats)
 
 		switch {
 		case value == bestValue:
-			winners = append(winners, player.entry.Name)
+			winners = append(winners, boldName(player.entry.Name))
 		case lowerIsBetter && value < bestValue:
 			bestValue = value
-			winners = []string{player.entry.Name}
+			winners = []string{boldName(player.entry.Name)}
 		case !lowerIsBetter && value > bestValue:
 			bestValue = value
-			winners = []string{player.entry.Name}
+			winners = []string{boldName(player.entry.Name)}
 		}
 	}
 

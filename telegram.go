@@ -28,6 +28,7 @@ func (c *telegramBotClient) botUserID() int64 {
 
 func (c *telegramBotClient) sendMessage(chatID int64, text string) error {
 	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = tgbotapi.ModeHTML
 	_, err := c.api.Send(msg)
 	return err
 }
