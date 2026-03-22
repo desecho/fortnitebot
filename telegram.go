@@ -31,3 +31,9 @@ func (c *telegramBotClient) sendMessage(chatID int64, text string) error {
 	_, err := c.api.Send(msg)
 	return err
 }
+
+func (c *telegramBotClient) setCommands(commands []tgbotapi.BotCommand) error {
+	cfg := tgbotapi.NewSetMyCommands(commands...)
+	_, err := c.api.Request(cfg)
+	return err
+}

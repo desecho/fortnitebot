@@ -63,6 +63,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	if err := registerCommands(client); err != nil {
+		log.Printf("failed to set bot menu commands: %v", err)
+	}
 	if err := runBot(client, provider, seasonProvider, statusSource, store, ranker, cfg.pollTimeoutSecs); err != nil {
 		log.Fatal(err)
 	}

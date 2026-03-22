@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, ranker rankingProvider, text string) string {
@@ -61,6 +63,28 @@ func normalizeCommand(command string) string {
 		command = command[:at]
 	}
 	return strings.ToLower(command)
+}
+
+func registerCommands(client botClient) error {
+	commands := []tgbotapi.BotCommand{
+		{Command: "help", Description: "Show available commands"},
+		{Command: "players", Description: "List configured players"},
+		{Command: "season", Description: "Days remaining in season"},
+		{Command: "status", Description: "Epic/Fortnite service status"},
+		{Command: "stats", Description: "Overall player stats"},
+		{Command: "seasonstats", Description: "Current season stats"},
+		{Command: "compare", Description: "Compare overall stats"},
+		{Command: "seasoncompare", Description: "Compare season stats"},
+		{Command: "session", Description: "Most recent session"},
+		{Command: "sessioncurrent", Description: "Current active session"},
+		{Command: "sessions", Description: "All recent sessions"},
+		{Command: "snapshot", Description: "Trigger daily snapshots"},
+		{Command: "stats_ai", Description: "Stats with AI ranking"},
+		{Command: "seasonstats_ai", Description: "Season stats with AI ranking"},
+		{Command: "session_ai", Description: "Session with AI ranking"},
+		{Command: "sessioncurrent_ai", Description: "Current session with AI ranking"},
+	}
+	return client.setCommands(commands)
 }
 
 func helpText() string {

@@ -63,6 +63,7 @@ type rankingProvider interface {
 type botClient interface {
 	getUpdates(offset int, timeoutSecs int) ([]tgbotapi.Update, error)
 	sendMessage(chatID int64, text string) error
+	setCommands(commands []tgbotapi.BotCommand) error
 	botUserID() int64
 }
 

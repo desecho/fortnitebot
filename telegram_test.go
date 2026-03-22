@@ -52,6 +52,10 @@ func (f *fakeBotClient) getUpdates(offset int, timeoutSecs int) ([]tgbotapi.Upda
 	return f.batches[idx], nil
 }
 
+func (f *fakeBotClient) setCommands(commands []tgbotapi.BotCommand) error {
+	return nil
+}
+
 func (f *fakeBotClient) sendMessage(chatID int64, text string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
