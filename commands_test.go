@@ -8,7 +8,7 @@ import (
 )
 
 func TestHandleMessageSeasonRoute(t *testing.T) {
-	got := handleMessage(stubStatsProvider{}, stubSeasonProvider{days: 5}, stubStatusProvider{}, nil, "/season")
+	got := handleMessage(stubStatsProvider{}, stubSeasonProvider{days: 5}, stubStatusProvider{}, nil, nil, "/season")
 	want := "Season ends in 5 days."
 	if got != want {
 		t.Fatalf("handleMessage() = %q, want %q", got, want)
@@ -29,6 +29,7 @@ func TestHandleMessageStatusRoute(t *testing.T) {
 				},
 			},
 		},
+		nil,
 		nil,
 		"/status",
 	)
@@ -116,7 +117,7 @@ func TestNormalizeCommand(t *testing.T) {
 
 func TestHelpText(t *testing.T) {
 	got := helpText()
-	for _, want := range []string{"/players", "/season", "/status", "/stats", "/seasonstats", "/compare", "/seasoncompare", "/session", "/sessioncurrent", "/sessions"} {
+	for _, want := range []string{"/players", "/season", "/status", "/stats", "/seasonstats", "/compare", "/seasoncompare", "/session", "/sessioncurrent", "/sessions", "/stats_ai", "/seasonstats_ai", "/session_ai", "/sessioncurrent_ai"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("helpText() missing %q", want)
 		}
@@ -534,13 +535,74 @@ func TestHandleMessageRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := handleMessage(provider, season, status, nil, tt.text)
+			got := handleMessage(provider, season, status, nil, nil, tt.text)
 			if tt.wantEmpty {
 				if got != "" {
 					t.Fatalf("got = %q, want empty", got)
 				}
 				return
 			}
+			if !strings.Contains(got, tt.wantContains) {
+				t.Fatalf("got = %q, want substring %q", got, tt.wantContains)
+			}
+		})
+	}
+}
+
+func TestAiRankText(t *testing.T) {
+	t.Run("nil ranker", func(t *testing.T) {
+		got := aiRankText(nil, "some stats")
+		want := "AI ranking is not configured."
+		if got != want {
+			t.Fatalf("got = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("empty stats", func(t *testing.T) {
+		ranker := stubRankingProvider{response: "ranked"}
+		got := aiRankText(ranker, "")
+		if got != "" {
+			t.Fatalf("got = %q, want empty", got)
+		}
+	})
+
+	t.Run("success", func(t *testing.T) {
+		ranker := stubRankingProvider{response: "1. Alice\n2. Bob"}
+		got := aiRankText(ranker, "some stats")
+		want := "1. Alice\n2. Bob"
+		if got != want {
+			t.Fatalf("got = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("error", func(t *testing.T) {
+		ranker := stubRankingProvider{err: errors.New("api error")}
+		got := aiRankText(ranker, "some stats")
+		want := "Failed to generate AI ranking: api error"
+		if got != want {
+			t.Fatalf("got = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestHandleMessageAiRoutes(t *testing.T) {
+	provider := twoPlayerProvider()
+	season := stubSeasonProvider{days: 5}
+	status := stubStatusProvider{}
+	ranker := stubRankingProvider{response: "1. Alice\n2. Bob"}
+
+	tests := []struct {
+		name         string
+		text         string
+		wantContains string
+	}{
+		{"/stats_ai", "/stats_ai", "1. Alice"},
+		{"/seasonstats_ai", "/seasonstats_ai", "1. Alice"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := handleMessage(provider, season, status, nil, ranker, tt.text)
 			if !strings.Contains(got, tt.wantContains) {
 				t.Fatalf("got = %q, want substring %q", got, tt.wantContains)
 			}

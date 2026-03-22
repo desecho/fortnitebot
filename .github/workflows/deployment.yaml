@@ -68,6 +68,7 @@ jobs:
             --from-literal=FORTNITE_API_TOKEN="${{ secrets.FORTNITE_API_TOKEN }}" \
             --from-literal=FORTNITE_API2_TOKEN="${{ secrets.FORTNITE_API2_TOKEN }}" \
             --from-literal=MONGODB_URI="${{ secrets.MONGODB_URI }}" \
+            --from-literal=OPENAI_TOKEN="${{ secrets.OPENAI_TOKEN }}" \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl apply -f deployment/deployment.yaml
           kubectl rollout restart "deployment/$PROJECT"

@@ -91,7 +91,7 @@ func TestRunBotForwardsMessages(t *testing.T) {
 	fake := newFakeBotClient(
 		[]tgbotapi.Update{newMessageUpdate(1, 100, "/help")},
 	)
-	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, nil, 1)
+	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, nil, nil, 1)
 	waitForDone(t, fake.done)
 
 	fake.mu.Lock()
@@ -112,7 +112,7 @@ func TestRunBotSkipsNilMessage(t *testing.T) {
 	fake := newFakeBotClient(
 		[]tgbotapi.Update{{UpdateID: 1, Message: nil}},
 	)
-	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, nil, 1)
+	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, nil, nil, 1)
 	waitForDone(t, fake.done)
 
 	fake.mu.Lock()
@@ -129,7 +129,7 @@ func TestRunBotRetriesOnSendError(t *testing.T) {
 	)
 	fake.sendErrs = []error{fmt.Errorf("network error")} // first call fails, retry succeeds
 
-	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, nil, 1)
+	go runBot(fake, stubStatsProvider{}, stubSeasonProvider{}, stubStatusProvider{}, nil, nil, 1)
 	waitForDone(t, fake.done)
 
 	fake.mu.Lock()

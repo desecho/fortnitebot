@@ -709,7 +709,7 @@ func TestHandleMessageSessionRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := handleMessage(provider, season, status, nil, tt.text)
+			got := handleMessage(provider, season, status, nil, nil, tt.text)
 			if !strings.Contains(got, tt.wantContains) {
 				t.Fatalf("got = %q, want substring %q", got, tt.wantContains)
 			}
@@ -717,21 +717,21 @@ func TestHandleMessageSessionRoutes(t *testing.T) {
 	}
 
 	t.Run("/session with store", func(t *testing.T) {
-		got := handleMessage(provider, season, status, store, "/session Alice")
+		got := handleMessage(provider, season, status, store, nil, "/session Alice")
 		if !strings.Contains(got, "Alice") {
 			t.Fatalf("got = %q, want substring 'Alice'", got)
 		}
 	})
 
 	t.Run("/sessions with store", func(t *testing.T) {
-		got := handleMessage(provider, season, status, store, "/sessions Alice")
+		got := handleMessage(provider, season, status, store, nil, "/sessions Alice")
 		if !strings.Contains(got, "Alice") {
 			t.Fatalf("got = %q, want substring 'Alice'", got)
 		}
 	})
 
 	t.Run("/snapshot with store", func(t *testing.T) {
-		got := handleMessage(provider, season, status, store, "/snapshot")
+		got := handleMessage(provider, season, status, store, nil, "/snapshot")
 		if !strings.Contains(got, "Collecting snapshots for") {
 			t.Fatalf("got = %q, want substring 'Collecting snapshots for'", got)
 		}

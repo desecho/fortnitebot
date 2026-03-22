@@ -19,6 +19,7 @@ type appConfig struct {
 	playersFile       string
 	pollTimeoutSecs   int
 	mongodbURI        string
+	openAIToken       string
 }
 
 func main() {
@@ -48,13 +49,21 @@ func main() {
 		log.Println("MONGODB_URI not set, session tracking disabled.")
 	}
 
+	var ranker rankingProvider
+	if cfg.openAIToken != "" {
+		ranker = newOpenAIRankingProvider(cfg.openAIToken)
+		log.Println("OpenAI configured, AI ranking enabled.")
+	} else {
+		log.Println("OPENAI_TOKEN not set, AI ranking disabled.")
+	}
+
 	seasonProvider := newFortniteAPISeasonProvider(cfg.fortniteAPI2Token)
 	statusSource := newEpicStatusProvider()
 	client, err := newTelegramBotClient(cfg.botToken)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if err := runBot(client, provider, seasonProvider, statusSource, store, cfg.pollTimeoutSecs); err != nil {
+	if err := runBot(client, provider, seasonProvider, statusSource, store, ranker, cfg.pollTimeoutSecs); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -90,6 +99,7 @@ func loadConfig() (appConfig, error) {
 	}
 
 	mongodbURI := strings.TrimSpace(os.Getenv("MONGODB_URI"))
+	openAIToken := strings.TrimSpace(os.Getenv("OPENAI_TOKEN"))
 
 	return appConfig{
 		botToken:          token,
@@ -98,6 +108,7 @@ func loadConfig() (appConfig, error) {
 		playersFile:       playersFile,
 		pollTimeoutSecs:   pollTimeout,
 		mongodbURI:        mongodbURI,
+		openAIToken:       openAIToken,
 	}, nil
 }
 
@@ -117,7 +128,7 @@ func collectSnapshots(provider statsProvider, store snapshotStore) {
 	log.Print(collectSnapshotsReport(provider, store))
 }
 
-func runBot(client botClient, provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, pollTimeout int) error {
+func runBot(client botClient, provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, ranker rankingProvider, pollTimeout int) error {
 	var offset int
 
 	log.Printf("Bot is running with %d configured player(s).", provider.Count())
@@ -141,7 +152,7 @@ func runBot(client botClient, provider statsProvider, season seasonProvider, sta
 				continue
 			}
 
-			response := handleMessage(provider, season, status, store, msg.Text)
+			response := handleMessage(provider, season, status, store, ranker, msg.Text)
 			if strings.TrimSpace(response) == "" {
 				continue
 			}

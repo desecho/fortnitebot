@@ -56,6 +56,10 @@ type statusProvider interface {
 	Summary() (fortniteStatusSummary, error)
 }
 
+type rankingProvider interface {
+	Rank(statsText string) (string, error)
+}
+
 type botClient interface {
 	getUpdates(offset int, timeoutSecs int) ([]tgbotapi.Update, error)
 	sendMessage(chatID int64, text string) error

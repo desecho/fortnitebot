@@ -56,6 +56,15 @@ func (p stubStatusProvider) Summary() (fortniteStatusSummary, error) {
 	return p.summary, p.err
 }
 
+type stubRankingProvider struct {
+	response string
+	err      error
+}
+
+func (p stubRankingProvider) Rank(statsText string) (string, error) {
+	return p.response, p.err
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {

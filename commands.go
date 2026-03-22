@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, text string) string {
+func handleMessage(provider statsProvider, season seasonProvider, status statusProvider, store snapshotStore, ranker rankingProvider, text string) string {
 	fields := strings.Fields(strings.TrimSpace(text))
 	if len(fields) == 0 {
 		return ""
@@ -42,6 +42,14 @@ func handleMessage(provider statsProvider, season seasonProvider, status statusP
 		return sessionsText(provider, store, args)
 	case "/snapshot":
 		return snapshotText(provider, store)
+	case "/stats_ai":
+		return aiRankText(ranker, statsText(provider, nil, false))
+	case "/seasonstats_ai":
+		return aiRankText(ranker, statsText(provider, nil, true))
+	case "/session_ai":
+		return aiRankText(ranker, sessionText(provider, store, nil))
+	case "/sessioncurrent_ai":
+		return aiRankText(ranker, sessionCurrentText(provider, store, nil))
 	default:
 		return "Unknown command. Use /help to see the available commands."
 	}
@@ -70,9 +78,30 @@ func helpText() string {
 		"/session [player]",
 		"/sessioncurrent [player]",
 		"/sessions [player]",
+		"/stats_ai",
+		"/seasonstats_ai",
+		"/session_ai",
+		"/sessioncurrent_ai",
 		"",
 		"Use /players to see the configured player names.",
 	}, "\n")
+}
+
+func aiRankText(ranker rankingProvider, statsOutput string) string {
+	if ranker == nil {
+		return "AI ranking is not configured."
+	}
+	if strings.TrimSpace(statsOutput) == "" {
+		return statsOutput
+	}
+	if strings.Contains(statsOutput, "No activity since last snapshot.") {
+		return statsOutput
+	}
+	ranked, err := ranker.Rank(statsOutput)
+	if err != nil {
+		return fmt.Sprintf("Failed to generate AI ranking: %v", err)
+	}
+	return ranked
 }
 
 func playersText(provider statsProvider) string {
