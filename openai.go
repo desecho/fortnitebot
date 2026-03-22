@@ -7,7 +7,7 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
-const aiSystemPrompt = "Given the fortnite stats, output the ranking of the players based on performance. The output should be like this:\n1. Player1\n2. Player2\n3. Player3\nIt should also include a short explanation in Russian of the ranking results"
+const aiSystemPrompt = "Given the fortnite stats, output the ranking of the players based on performance. The output should be like this:\n1. Player1\n2. Player2\n3. Player3\nIt should also include a short explanation in Russian (в блатном безбашенном стиле) of the ranking results. Do not include headers"
 
 type openAIRankingProvider struct {
 	client *openai.Client
