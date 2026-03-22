@@ -602,6 +602,7 @@ func TestHandleMessageAiRoutes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetAIRateLimit()
 			got := handleMessage(provider, season, status, nil, ranker, tt.text)
 			if !strings.Contains(got, tt.wantContains) {
 				t.Fatalf("got = %q, want substring %q", got, tt.wantContains)

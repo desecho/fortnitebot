@@ -45,16 +45,49 @@ func handleMessage(provider statsProvider, season seasonProvider, status statusP
 	case "/snapshot":
 		return snapshotText(provider, store)
 	case "/stats_ai":
+		if aiRateLimited() {
+			return "Try again later."
+		}
 		return aiRankText(ranker, statsText(provider, nil, false))
 	case "/seasonstats_ai":
+		if aiRateLimited() {
+			return "Try again later."
+		}
 		return aiRankText(ranker, statsText(provider, nil, true))
 	case "/session_ai":
+		if aiRateLimited() {
+			return "Try again later."
+		}
 		return aiRankText(ranker, sessionText(provider, store, nil))
 	case "/sessioncurrent_ai":
+		if aiRateLimited() {
+			return "Try again later."
+		}
 		return aiRankText(ranker, sessionCurrentText(provider, store, nil))
 	default:
 		return "Unknown command. Use /help to see the available commands."
 	}
+}
+
+var (
+	aiRateMu   sync.Mutex
+	aiLastUsed time.Time
+)
+
+func aiRateLimited() bool {
+	aiRateMu.Lock()
+	defer aiRateMu.Unlock()
+	if time.Since(aiLastUsed) < time.Minute {
+		return true
+	}
+	aiLastUsed = time.Now()
+	return false
+}
+
+func resetAIRateLimit() {
+	aiRateMu.Lock()
+	aiLastUsed = time.Time{}
+	aiRateMu.Unlock()
 }
 
 func normalizeCommand(command string) string {
