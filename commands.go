@@ -116,7 +116,6 @@ func registerCommands(client botClient) error {
 		{Command: "session", Description: "Most recent session"},
 		{Command: "sessioncurrent", Description: "Current active session"},
 		{Command: "sessions", Description: "All recent sessions"},
-		{Command: "snapshot", Description: "Trigger daily snapshots"},
 		{Command: "stats_ai", Description: "Stats with AI ranking"},
 		{Command: "seasonstats_ai", Description: "Season stats with AI ranking"},
 		{Command: "session_ai", Description: "Session with AI ranking"},
